@@ -1,0 +1,96 @@
+Option Explicit
+
+
+'============================================================
+' MODULE STATE
+'============================================================
+
+Private mTest As String
+Private mNodeID As String
+Private mParentID As String
+Private mLabel As String
+Private mDepth As Long
+Private mSortOrder As Long
+
+
+'============================================================
+' PUBLIC INTERFACE
+'============================================================
+
+Public Sub Initialize( _
+    ByVal testName As String, _
+    ByVal NodeID As String, _
+    ByVal ParentID As String, _
+    ByVal labelText As String, _
+    ByVal depthValue As Long, _
+    ByVal sortValue As Long _
+)
+
+    mTest = _
+        testName
+
+    mNodeID = _
+        NodeID
+
+    mParentID = _
+        ParentID
+
+    mLabel = _
+        labelText
+
+    mDepth = _
+        depthValue
+
+    mSortOrder = _
+        sortValue
+
+End Sub
+
+
+Public Property Get Test() As String
+
+    Test = _
+        mTest
+
+End Property
+
+
+Public Property Get NodeID() As String
+
+    NodeID = _
+        mNodeID
+
+End Property
+
+
+Public Property Get ParentID() As String
+
+    ParentID = _
+        mParentID
+
+End Property
+
+
+Public Property Get Label() As String
+
+    Label = _
+        mLabel
+
+End Property
+
+
+Public Property Get Depth() As Long
+
+    Depth = _
+        mDepth
+
+End Property
+
+
+Public Property Get SortOrder() As Long
+
+    SortOrder = _
+        mSortOrder
+
+End Property
+
