@@ -1,0 +1,262 @@
+Option Explicit
+
+
+'============================================================
+' WORKSHEET EVENTS
+'============================================================
+
+Private Sub Worksheet_Change( _
+    ByVal Target As Range _
+)
+
+    Dim watchedRange As Range
+    Dim changedCell As Range
+
+    Dim rowsToReconcile As Object
+    Dim rowKey As Variant
+
+    Dim fieldName As String
+    Dim reconcileColumn As Long
+
+    Dim savedErrNumber As Long
+    Dim savedErrDescription As String
+
+    Set watchedRange = _
+        Intersect( _
+            Target, _
+            Application.Union( _
+                Me.Columns(2), _
+                Me.Range("D:I")))
+
+    If watchedRange Is Nothing Then
+        Exit Sub
+    End If
+
+    On Error GoTo CleanUp
+
+    Application.EnableEvents = False
+
+    '----------------------------------------------------
+    ' SINGLE-CELL CHANGE
+    '----------------------------------------------------
+    If watchedRange.CountLarge = 1 Then
+
+        Set changedCell = _
+            watchedRange.Cells(1, 1)
+
+        If changedCell.Row < 2 Then
+            GoTo CleanUp
+        End If
+
+        fieldName = _
+            SheetFieldName( _
+                changedCell.Column)
+
+        If Len(fieldName) = 0 Then
+            GoTo CleanUp
+        End If
+
+        If changedCell.Column >= 5 _
+            And changedCell.Column <= 9 Then
+
+            SyncNodeIdentityForField _
+                Me, _
+                changedCell.Row, _
+                fieldName
+
+        End If
+
+        ' D:H can invalidate subordinate hierarchy fields.
+        If changedCell.Column >= 4 _
+            And changedCell.Column <= 8 Then
+
+            ReconcileAfterChange _
+                Me, _
+                changedCell.Row, _
+                fieldName
+
+        End If
+
+        ApplyThemeToCell _
+            changedCell, _
+            fieldName
+
+    '----------------------------------------------------
+    ' MULTI-CELL CHANGE
+    '----------------------------------------------------
+    Else
+
+        Set rowsToReconcile = _
+            CreateObject( _
+                "Scripting.Dictionary")
+
+        For Each changedCell In watchedRange.Cells
+
+            If changedCell.Row >= 2 Then
+
+                fieldName = _
+                    SheetFieldName( _
+                        changedCell.Column)
+
+                If Len(fieldName) > 0 Then
+
+                    If changedCell.Column >= 5 _
+                        And changedCell.Column <= 9 Then
+
+                        SyncNodeIdentityForField _
+                            Me, _
+                            changedCell.Row, _
+                            fieldName
+
+                    End If
+
+                    ApplyThemeToCell _
+                        changedCell, _
+                        fieldName
+
+                    ' Bulk clears reconcile once from the highest
+                    ' changed parent field in each affected row.
+                    If Len(Trim$(CStr( _
+                            changedCell.value2))) = 0 Then
+
+                        If changedCell.Column >= 4 _
+                            And changedCell.Column <= 8 Then
+
+                            rowKey = _
+                                CStr(changedCell.Row)
+
+                            If Not rowsToReconcile.Exists( _
+                                    rowKey) Then
+
+                                rowsToReconcile.Add _
+                                    rowKey, _
+                                    changedCell.Column
+
+                            ElseIf changedCell.Column < _
+                                    CLng( _
+                                        rowsToReconcile( _
+                                            rowKey)) Then
+
+                                rowsToReconcile( _
+                                    rowKey) = _
+                                        changedCell.Column
+
+                            End If
+
+                        End If
+
+                    End If
+
+                End If
+
+            End If
+
+        Next changedCell
+
+        For Each rowKey In rowsToReconcile.keys
+
+            reconcileColumn = _
+                CLng( _
+                    rowsToReconcile( _
+                        rowKey))
+
+            fieldName = _
+                FieldNameFromColumn( _
+                    reconcileColumn)
+
+            If Len(fieldName) > 0 Then
+
+                ReconcileAfterChange _
+                    Me, _
+                    CLng(rowKey), _
+                    fieldName
+
+            End If
+
+        Next rowKey
+
+    End If
+
+
+CleanUp:
+
+    savedErrNumber = _
+        Err.Number
+
+    savedErrDescription = _
+        Err.Description
+
+    Application.EnableEvents = True
+
+    If savedErrNumber <> 0 Then
+
+        MsgBox _
+            "Worksheet update failed." & _
+            vbCrLf & vbCrLf & _
+            "Error " & CStr(savedErrNumber) & _
+            vbCrLf & _
+            savedErrDescription, _
+            vbCritical, _
+            "TS Data Error"
+
+    End If
+
+End Sub
+
+
+Private Sub Worksheet_BeforeDoubleClick( _
+    ByVal Target As Range, _
+    Cancel As Boolean _
+)
+
+    If Target.CountLarge <> 1 Then
+        Exit Sub
+    End If
+
+    If Target.Row < 2 Then
+        Exit Sub
+    End If
+
+    ' Custom picker fields: UUT and Test hierarchy.
+    Select Case Target.Column
+
+        Case 2, 4, 5, 6, 7, 8, 9
+
+        Case Else
+
+            Exit Sub
+
+    End Select
+
+    Cancel = _
+        True
+
+    OpenPickerForCell _
+        Target
+
+End Sub
+
+
+'============================================================
+' INTERNAL HELPERS
+'============================================================
+
+Private Function SheetFieldName( _
+    ByVal columnNumber As Long _
+) As String
+
+    If columnNumber = 2 Then
+
+        SheetFieldName = _
+            "UUT"
+
+    Else
+
+        SheetFieldName = _
+            FieldNameFromColumn( _
+                columnNumber)
+
+    End If
+
+End Function
+
