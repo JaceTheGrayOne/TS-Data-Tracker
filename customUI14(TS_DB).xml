@@ -1,0 +1,169 @@
+<customUI
+    xmlns="http://schemas.microsoft.com/office/2009/07/customui"
+    onLoad="Ribbon_OnLoad">
+
+    <ribbon startFromScratch="false">
+
+        <tabs>
+
+            <tab
+                id="tabTroubleshooting"
+                label="Troubleshooting"
+                insertAfterMso="TabData">
+
+                <group
+                    id="grpRecordSearch"
+                    label="Search">
+
+                    <box
+                        id="boxSearchLayout"
+                        boxStyle="vertical">
+
+                        <box
+                            id="boxSearchRow"
+                            boxStyle="horizontal">
+
+                            <editBox
+                                id="txtRecordSearch"
+                                label="Search Records"
+                                showLabel="false"
+                                sizeString="WWWWWWWWWWWWWWWWWWWW"
+                                maxLength="100"
+                                screentip="Search troubleshooting records"
+                                supertip="Enter one or more search terms. Every term must occur somewhere within the same record."
+                                getText="Ribbon_RecordSearchGetText"
+                                onChange="Ribbon_RecordSearchChanged"/>
+
+                            <button
+                                id="btnClearRecordSearch"
+                                label="Clear Search"
+                                showLabel="false"
+                                size="normal"
+                                imageMso="FilterClearAllFilters"
+                                screentip="Clear Search"
+                                supertip="Clears the search and preset filters and returns to the Default Sheet View."
+                                getEnabled="Ribbon_ClearRecordSearchGetEnabled"
+                                onAction="Ribbon_ClearRecordSearch"/>
+
+                        </box>
+
+
+                        <box
+                            id="boxLRUFilters"
+                            boxStyle="horizontal">
+
+                            <labelControl
+                                id="lblLRUFilters"
+                                label="LRU:"/>
+
+                            <toggleButton
+                                id="tglLRUBMPG"
+                                label="BMPG"
+                                tag="BMPG"
+                                getPressed="Ribbon_LRUFilterGetPressed"
+                                onAction="Ribbon_LRUFilterChanged"/>
+
+                            <toggleButton
+                                id="tglLRURMPG"
+                                label="RMPG"
+                                tag="RMPG"
+                                getPressed="Ribbon_LRUFilterGetPressed"
+                                onAction="Ribbon_LRUFilterChanged"/>
+
+                            <toggleButton
+                                id="tglLRUSIM"
+                                label="SIM"
+                                tag="SIM"
+                                getPressed="Ribbon_LRUFilterGetPressed"
+                                onAction="Ribbon_LRUFilterChanged"/>
+
+                            <toggleButton
+                                id="tglLRUOCP"
+                                label="OCP"
+                                tag="OCP"
+                                getPressed="Ribbon_LRUFilterGetPressed"
+                                onAction="Ribbon_LRUFilterChanged"/>
+
+                            <toggleButton
+                                id="tglLRUOPU"
+                                label="OPU"
+                                tag="OPU"
+                                getPressed="Ribbon_LRUFilterGetPressed"
+                                onAction="Ribbon_LRUFilterChanged"/>
+
+                        </box>
+
+
+                        <box
+                            id="boxTestFilters"
+                            boxStyle="horizontal">
+
+                            <labelControl
+                                id="lblTestFilters"
+                                label="Test:"/>
+
+                            <toggleButton
+                                id="tglTestFunctional"
+                                label="Functional"
+                                tag="Functional"
+                                getPressed="Ribbon_TestFilterGetPressed"
+                                onAction="Ribbon_TestFilterChanged"/>
+
+                            <toggleButton
+                                id="tglTestThermal"
+                                label="Thermal"
+                                tag="Thermal"
+                                getPressed="Ribbon_TestFilterGetPressed"
+                                onAction="Ribbon_TestFilterChanged"/>
+
+                            <toggleButton
+                                id="tglTestATP"
+                                label="ATP"
+                                tag="ATP"
+                                getPressed="Ribbon_TestFilterGetPressed"
+                                onAction="Ribbon_TestFilterChanged"/>
+
+                        </box>
+
+                    </box>
+
+                </group>
+
+
+                <group
+                    id="grpNavigation"
+                    label="Navigation">
+
+                    <button
+                        id="btnGoToTSData"
+                        label="TS Data"
+                        imageMso="TableExcelSpreadsheetInsert"
+                        size="normal"
+                        screentip="Open troubleshooting records"
+                        onAction="Ribbon_GoToTSData"/>
+
+                </group>
+
+
+                <group
+                    id="grpDebug"
+                    label="Debug">
+
+                    <button
+                        id="btnResetWorkbookState"
+                        label="Reset State"
+                        imageMso="RefreshAll"
+                        size="normal"
+                        screentip="Reset workbook state"
+                        supertip="Clears transient search and filter state, unhides troubleshooting records, restores the Default Sheet View, and resets Excel event/display state. Database records are not modified."
+                        onAction="Ribbon_ResetWorkbookState"/>
+
+                </group>
+
+            </tab>
+
+        </tabs>
+
+    </ribbon>
+
+</customUI>
