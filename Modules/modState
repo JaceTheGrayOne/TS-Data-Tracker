@@ -654,6 +654,7 @@ End Function
 Public Sub TestStateEngine()
 
     Dim roots As Collection
+    Dim blackRoots As Collection
 
     Debug.Print String(70, "=")
     Debug.Print "STATE ENGINE TEST"
@@ -661,17 +662,33 @@ Public Sub TestStateEngine()
 
     Set roots = _
         GetRootNodes( _
-            "Functional")
+            "Functional (Red)")
 
     If roots.Count > 0 Then
 
         Debug.Print _
-            "PASS  Functional has tree roots."
+            "PASS  Functional (Red) has tree roots."
 
     Else
 
         Debug.Print _
-            "FAIL  Functional has no tree roots."
+            "FAIL  Functional (Red) has no tree roots."
+
+    End If
+
+    Set blackRoots = _
+        GetRootNodes( _
+            "Functional (Black)")
+
+    If blackRoots.Count > 0 Then
+
+        Debug.Print _
+            "PASS  Functional (Black) has tree roots."
+
+    Else
+
+        Debug.Print _
+            "FAIL  Functional (Black) has no tree roots."
 
     End If
 
@@ -726,4 +743,3 @@ Public Sub TestStateEngine()
     Debug.Print String(70, "=")
 
 End Sub
-
