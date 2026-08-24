@@ -1,0 +1,403 @@
+Option Explicit
+
+
+'============================================================
+' CONFIGURATION
+'============================================================
+
+Private Const ROUTE_TABLE_NAME As String = "tbl_Routes"
+
+
+'============================================================
+' PUBLIC INTERFACE
+'============================================================
+
+Public Function TryGetRoute( _
+    ByVal parentField As String, _
+    ByVal parentValue As String, _
+    ByVal childField As String, _
+    ByRef listTableName As String, _
+    ByRef listColumnName As String _
+) As Boolean
+
+    Dim routes As ListObject
+    Dim routeRow As ListRow
+
+    Dim colParentField As Long
+    Dim colParentValue As Long
+    Dim colChildField As Long
+    Dim colListTable As Long
+    Dim colListColumn As Long
+
+    Dim matchCount As Long
+
+    ' Edge Case Defense:
+    ' Clear ByRef outputs before any early exit to prevent stale route data.
+    listTableName = _
+        vbNullString
+
+    listColumnName = _
+        vbNullString
+
+    Set routes = _
+        FindTableByName( _
+            ROUTE_TABLE_NAME)
+
+    If routes Is Nothing Then
+
+        Err.Raise _
+            vbObjectError + 1000, _
+            "modRouting.TryGetRoute", _
+            "Could not find table '" & ROUTE_TABLE_NAME & "'."
+
+    End If
+
+    If routes.DataBodyRange Is Nothing Then
+        Exit Function
+    End If
+
+    colParentField = _
+        routes.ListColumns( _
+            "Parent Field" _
+        ).Index
+
+    colParentValue = _
+        routes.ListColumns( _
+            "Parent Value" _
+        ).Index
+
+    colChildField = _
+        routes.ListColumns( _
+            "Child Field" _
+        ).Index
+
+    colListTable = _
+        routes.ListColumns( _
+            "List Table" _
+        ).Index
+
+    colListColumn = _
+        routes.ListColumns( _
+            "List Column" _
+        ).Index
+
+    matchCount = _
+        0
+
+    For Each routeRow In routes.ListRows
+
+        If SameText( _
+                routeRow.Range.Cells( _
+                    1, _
+                    colParentField).value2, _
+                parentField) _
+            And SameText( _
+                routeRow.Range.Cells( _
+                    1, _
+                    colParentValue).value2, _
+                parentValue) _
+            And SameText( _
+                routeRow.Range.Cells( _
+                    1, _
+                    colChildField).value2, _
+                childField) Then
+
+            matchCount = _
+                matchCount + 1
+
+            listTableName = _
+                Trim$(CStr( _
+                    routeRow.Range.Cells( _
+                        1, _
+                        colListTable).value2))
+
+            listColumnName = _
+                Trim$(CStr( _
+                    routeRow.Range.Cells( _
+                        1, _
+                        colListColumn).value2))
+
+        End If
+
+    Next routeRow
+
+    If matchCount > 1 Then
+
+        Err.Raise _
+            vbObjectError + 1001, _
+            "modRouting.TryGetRoute", _
+            "Duplicate route found:" & vbCrLf & _
+            parentField & " = " & parentValue & vbCrLf & _
+            "Child Field = " & childField
+
+    End If
+
+    TryGetRoute = _
+        (matchCount = 1)
+
+End Function
+
+
+Public Function GetRouteRange( _
+    ByVal parentField As String, _
+    ByVal parentValue As String, _
+    ByVal childField As String _
+) As Range
+
+    Dim tableName As String
+    Dim columnName As String
+
+    Dim sourceTable As ListObject
+    Dim sourceColumn As listColumn
+
+    ' No configured route returns Nothing.
+    ' Invalid configured routes are handled as configuration errors.
+    If Not TryGetRoute( _
+            parentField, _
+            parentValue, _
+            childField, _
+            tableName, _
+            columnName) Then
+
+        Exit Function
+
+    End If
+
+    Set sourceTable = _
+        FindTableByName( _
+            tableName)
+
+    If sourceTable Is Nothing Then
+
+        Err.Raise _
+            vbObjectError + 1002, _
+            "modRouting.GetRouteRange", _
+            "Route points to missing table '" & _
+            tableName & "'."
+
+    End If
+
+    On Error Resume Next
+
+    Set sourceColumn = _
+        sourceTable.ListColumns( _
+            columnName)
+
+    On Error GoTo 0
+
+    If sourceColumn Is Nothing Then
+
+        Err.Raise _
+            vbObjectError + 1003, _
+            "modRouting.GetRouteRange", _
+            "Table '" & tableName & _
+            "' does not contain column '" & _
+            columnName & "'."
+
+    End If
+
+    If sourceColumn.DataBodyRange Is Nothing Then
+
+        Err.Raise _
+            vbObjectError + 1004, _
+            "modRouting.GetRouteRange", _
+            "Route source '" & tableName & _
+            "[" & columnName & "]' contains no data rows."
+
+    End If
+
+    Set GetRouteRange = _
+        sourceColumn.DataBodyRange
+
+End Function
+
+
+'============================================================
+' INTERNAL HELPERS
+'============================================================
+
+Private Function FindTableByName( _
+    ByVal tableName As String _
+) As ListObject
+
+    Dim ws As Worksheet
+    Dim tbl As ListObject
+
+    For Each ws In ThisWorkbook.Worksheets
+
+        Set tbl = _
+            Nothing
+
+        On Error Resume Next
+
+        Set tbl = _
+            ws.ListObjects( _
+                tableName)
+
+        On Error GoTo 0
+
+        If Not tbl Is Nothing Then
+
+            Set FindTableByName = _
+                tbl
+
+            Exit Function
+
+        End If
+
+    Next ws
+
+End Function
+
+
+Private Function SameText( _
+    ByVal value1 As Variant, _
+    ByVal value2 As String _
+) As Boolean
+
+    SameText = _
+        (StrComp( _
+            Trim$(CStr(value1)), _
+            Trim$(value2), _
+            vbTextCompare) = 0)
+
+End Function
+
+
+'============================================================
+' TEST HARNESS
+'============================================================
+
+Public Sub TestRoutingEngine()
+
+    Debug.Print String(70, "=")
+    Debug.Print "ROUTING ENGINE TEST"
+    Debug.Print String(70, "=")
+
+    TestOneRoute _
+        "Test", _
+        "Thermal", _
+        "Test Step", _
+        "lst_Therm_Sect", _
+        "Thermal - Section"
+
+    TestOneRoute _
+        "Test Step", _
+        "ESS Op Cycle", _
+        "Sub Step 1", _
+        "lst_Therm_Cycle", _
+        "Thermal - ESS Op Cycle"
+
+    TestOneRoute _
+        "Sub Step 1", _
+        "Cold 1", _
+        "Sub Step 2", _
+        "lst_Therm_Cycle_Test", _
+        "Thermal - Cycle Tests"
+
+    TestNoRoute _
+        "Test Step", _
+        "7.2 Test Setup", _
+        "Sub Step 1"
+
+    Debug.Print String(70, "=")
+
+End Sub
+
+
+Private Sub TestOneRoute( _
+    ByVal parentField As String, _
+    ByVal parentValue As String, _
+    ByVal childField As String, _
+    ByVal expectedTable As String, _
+    ByVal expectedColumn As String _
+)
+
+    Dim actualTable As String
+    Dim actualColumn As String
+    Dim found As Boolean
+
+    found = _
+        TryGetRoute( _
+            parentField, _
+            parentValue, _
+            childField, _
+            actualTable, _
+            actualColumn)
+
+    If Not found Then
+
+        Debug.Print _
+            "FAIL  " & _
+            parentField & " = " & _
+            parentValue & _
+            " -> NO ROUTE FOUND"
+
+    ElseIf StrComp( _
+                actualTable, _
+                expectedTable, _
+                vbTextCompare) <> 0 _
+        Or StrComp( _
+                actualColumn, _
+                expectedColumn, _
+                vbTextCompare) <> 0 Then
+
+        Debug.Print _
+            "FAIL  " & _
+            parentField & " = " & parentValue
+
+        Debug.Print _
+            "      Expected: " & _
+            expectedTable & _
+            "[" & expectedColumn & "]"
+
+        Debug.Print _
+            "      Actual:   " & _
+            actualTable & _
+            "[" & actualColumn & "]"
+
+    Else
+
+        Debug.Print _
+            "PASS  " & _
+            parentField & " = " & _
+            parentValue & _
+            " -> " & _
+            actualTable & _
+            "[" & actualColumn & "]"
+
+    End If
+
+End Sub
+
+
+Private Sub TestNoRoute( _
+    ByVal parentField As String, _
+    ByVal parentValue As String, _
+    ByVal childField As String _
+)
+
+    Dim tableName As String
+    Dim columnName As String
+
+    If TryGetRoute( _
+            parentField, _
+            parentValue, _
+            childField, _
+            tableName, _
+            columnName) Then
+
+        Debug.Print _
+            "FAIL  Expected no route for " & _
+            parentField & " = " & parentValue
+
+    Else
+
+        Debug.Print _
+            "PASS  No route: " & _
+            parentField & " = " & parentValue
+
+    End If
+
+End Sub
+
