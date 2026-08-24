@@ -1,0 +1,483 @@
+Option Explicit
+
+
+'============================================================
+' MODULE STATE
+'============================================================
+
+Private mRibbon As Office.IRibbonUI
+
+Private mPresetFilterSearchScheduled As Boolean
+Private mPresetFilterSearchTime As Date
+
+
+'============================================================
+' RIBBON LIFECYCLE
+'============================================================
+
+Public Sub Ribbon_OnLoad( _
+    ByVal ribbon As Office.IRibbonUI _
+)
+
+    Set mRibbon = _
+        ribbon
+
+End Sub
+
+
+'============================================================
+' SEARCH CALLBACKS
+'============================================================
+
+Public Sub Ribbon_RecordSearchChanged( _
+    ByVal control As Office.IRibbonControl, _
+    ByVal text As String _
+)
+
+    Dim matchCount As Long
+
+    On Error GoTo SearchFailed
+
+    matchCount = _
+        ApplyRecordSearch( _
+            text, _
+            RecordSearchCurrentLRUFilter(), _
+            RecordSearchCurrentTestFilter())
+
+    If matchCount < 0 Then
+        Exit Sub
+    End If
+
+    RefreshRecordSearchRibbon
+
+    Exit Sub
+
+
+SearchFailed:
+
+    MsgBox _
+        "The record search could not be applied." & _
+        vbCrLf & vbCrLf & _
+        "Error " & CStr(Err.Number) & _
+        vbCrLf & _
+        Err.Description, _
+        vbCritical, _
+        "Record Search"
+
+End Sub
+
+
+Public Sub Ribbon_RecordSearchGetText( _
+    ByVal control As Office.IRibbonControl, _
+    ByRef returnedVal _
+)
+
+    returnedVal = _
+        RecordSearchCurrentQuery()
+
+End Sub
+
+
+Public Sub Ribbon_ClearRecordSearch( _
+    ByVal control As Office.IRibbonControl _
+)
+
+    On Error GoTo ClearFailed
+
+    CancelPendingPresetFilterSearch
+
+    ClearRecordSearch
+
+    RefreshRecordSearchRibbon
+
+    Exit Sub
+
+
+ClearFailed:
+
+    MsgBox _
+        "The record search could not be cleared." & _
+        vbCrLf & vbCrLf & _
+        "Error " & CStr(Err.Number) & _
+        vbCrLf & _
+        Err.Description, _
+        vbCritical, _
+        "Record Search"
+
+End Sub
+
+
+Public Sub Ribbon_ClearRecordSearchGetEnabled( _
+    ByVal control As Office.IRibbonControl, _
+    ByRef returnedVal _
+)
+
+    returnedVal = _
+        RecordSearchIsActive()
+
+End Sub
+
+
+'============================================================
+' PRESET FILTER CALLBACKS
+'============================================================
+
+Public Sub Ribbon_LRUFilterChanged( _
+    ByVal control As Office.IRibbonControl, _
+    ByVal pressed As Boolean _
+)
+
+    Dim currentFilter As String
+    Dim selectedFilter As String
+
+    currentFilter = _
+        RecordSearchCurrentLRUFilter()
+
+    ' Ribbon pressed state lags during onAction.
+    ' Use logical filter state to determine whether click selects or clears.
+    If StrComp( _
+            currentFilter, _
+            control.Tag, _
+            vbTextCompare) = 0 Then
+
+        selectedFilter = _
+            vbNullString
+
+    Else
+
+        selectedFilter = _
+            control.Tag
+
+    End If
+
+    SetRecordSearchLRUFilter _
+        selectedFilter
+
+    ' Defer filtering until this callback returns so Excel can
+    ' repaint the native toggle states first.
+    InvalidatePresetFilterControls
+
+    SchedulePresetFilterSearch
+
+End Sub
+
+
+Public Sub Ribbon_LRUFilterGetPressed( _
+    ByVal control As Office.IRibbonControl, _
+    ByRef returnedVal _
+)
+
+    returnedVal = _
+        (StrComp( _
+            RecordSearchCurrentLRUFilter(), _
+            control.Tag, _
+            vbTextCompare) = 0)
+
+End Sub
+
+
+Public Sub Ribbon_TestFilterChanged( _
+    ByVal control As Office.IRibbonControl, _
+    ByVal pressed As Boolean _
+)
+
+    Dim currentFilter As String
+    Dim selectedFilter As String
+
+    currentFilter = _
+        RecordSearchCurrentTestFilter()
+
+    ' Ribbon pressed state lags during onAction.
+    ' Use logical filter state to determine whether click selects or clears.
+    If StrComp( _
+            currentFilter, _
+            control.Tag, _
+            vbTextCompare) = 0 Then
+
+        selectedFilter = _
+            vbNullString
+
+    Else
+
+        selectedFilter = _
+            control.Tag
+
+    End If
+
+    SetRecordSearchTestFilter _
+        selectedFilter
+
+    ' Defer filtering until this callback returns so Excel can
+    ' repaint the native toggle states first.
+    InvalidatePresetFilterControls
+
+    SchedulePresetFilterSearch
+
+End Sub
+
+
+Public Sub Ribbon_TestFilterGetPressed( _
+    ByVal control As Office.IRibbonControl, _
+    ByRef returnedVal _
+)
+
+    returnedVal = _
+        (StrComp( _
+            RecordSearchCurrentTestFilter(), _
+            control.Tag, _
+            vbTextCompare) = 0)
+
+End Sub
+
+
+'============================================================
+' NAVIGATION / DEBUG CALLBACKS
+'============================================================
+
+Public Sub Ribbon_GoToTSData( _
+    ByVal control As Office.IRibbonControl _
+)
+
+    ThisWorkbook.Worksheets( _
+        "TS Data" _
+    ).Activate
+
+End Sub
+
+
+Public Sub Ribbon_ResetWorkbookState( _
+    ByVal control As Office.IRibbonControl _
+)
+
+    On Error GoTo ResetFailed
+
+    ' Prevent queued filtering from reapplying stale state after reset.
+    CancelPendingPresetFilterSearch
+
+    If Not ResetRecordSearchStateToDefault() Then
+        Exit Sub
+    End If
+
+    If Not mRibbon Is Nothing Then
+        mRibbon.Invalidate
+    End If
+
+    ' Leave the custom tab so its live editBox is rebuilt on return.
+    Application.SendKeys _
+        "%h", _
+        False
+
+    Exit Sub
+
+
+ResetFailed:
+
+    ' Restore Excel globals even if recovery fails.
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    Application.Interactive = True
+
+    Application.StatusBar = False
+
+    MsgBox _
+        "The workbook state could not be completely reset." & _
+        vbCrLf & vbCrLf & _
+        "Error " & CStr(Err.Number) & _
+        vbCrLf & _
+        Err.Description, _
+        vbCritical, _
+        "Reset State"
+
+End Sub
+
+
+'============================================================
+' DEFERRED FILTER EXECUTION
+'============================================================
+
+Public Sub ApplyPendingPresetFilterSearch()
+
+    Dim matchCount As Long
+
+    On Error GoTo SearchFailed
+
+    mPresetFilterSearchScheduled = _
+        False
+
+    matchCount = _
+        ApplyRecordSearch( _
+            RecordSearchCurrentQuery(), _
+            RecordSearchCurrentLRUFilter(), _
+            RecordSearchCurrentTestFilter())
+
+    If matchCount < 0 Then
+        Exit Sub
+    End If
+
+    RefreshRecordSearchRibbon
+
+    Exit Sub
+
+
+SearchFailed:
+
+    mPresetFilterSearchScheduled = _
+        False
+
+    MsgBox _
+        "The preset filter could not be applied." & _
+        vbCrLf & vbCrLf & _
+        "Error " & CStr(Err.Number) & _
+        vbCrLf & _
+        Err.Description, _
+        vbCritical, _
+        "Record Search"
+
+End Sub
+
+
+'============================================================
+' RIBBON REFRESH
+'============================================================
+
+Public Sub RefreshRecordSearchRibbon()
+
+    If mRibbon Is Nothing Then
+        Exit Sub
+    End If
+
+    ' Do not call from preset toggle onAction.
+    ' Those callbacks must return before Excel can repaint their pressed state.
+    mRibbon.Invalidate
+
+    DoEvents
+
+End Sub
+
+
+Private Sub InvalidatePresetFilterControls()
+
+    If mRibbon Is Nothing Then
+        Exit Sub
+    End If
+
+    mRibbon.InvalidateControl _
+        "tglLRUBMPG"
+
+    mRibbon.InvalidateControl _
+        "tglLRURMPG"
+
+    mRibbon.InvalidateControl _
+        "tglLRUSIM"
+
+    mRibbon.InvalidateControl _
+        "tglLRUOCP"
+
+    mRibbon.InvalidateControl _
+        "tglLRUOPU"
+
+    mRibbon.InvalidateControl _
+        "tglTestFunctional"
+
+    mRibbon.InvalidateControl _
+        "tglTestThermal"
+
+    mRibbon.InvalidateControl _
+        "tglTestATP"
+
+    mRibbon.InvalidateControl _
+        "btnClearRecordSearch"
+
+End Sub
+
+
+'============================================================
+' INTERNAL HELPERS
+'============================================================
+
+Private Sub SchedulePresetFilterSearch()
+
+    Dim callbackName As String
+
+    On Error GoTo ScheduleFailed
+
+    ' Rapid preset changes collapse into one pending search using
+    ' the final logical filter state.
+    ' This avoids a bug that occurs when trying to rebuild
+    ' The current view too rapidly.
+    If mPresetFilterSearchScheduled Then
+        Exit Sub
+    End If
+
+    callbackName = _
+        PresetFilterSearchCallbackName()
+
+    mPresetFilterSearchTime = _
+        Now
+
+    mPresetFilterSearchScheduled = _
+        True
+
+    Application.OnTime _
+        EarliestTime:=mPresetFilterSearchTime, _
+        Procedure:=callbackName
+
+    Exit Sub
+
+
+ScheduleFailed:
+
+    mPresetFilterSearchScheduled = _
+        False
+
+    MsgBox _
+        "The preset filter could not be scheduled." & _
+        vbCrLf & vbCrLf & _
+        "Error " & CStr(Err.Number) & _
+        vbCrLf & _
+        Err.Description, _
+        vbCritical, _
+        "Record Search"
+
+End Sub
+
+
+Private Sub CancelPendingPresetFilterSearch()
+
+    Dim callbackName As String
+
+    If Not mPresetFilterSearchScheduled Then
+        Exit Sub
+    End If
+
+    callbackName = _
+        PresetFilterSearchCallbackName()
+
+    On Error Resume Next
+
+    Application.OnTime _
+        EarliestTime:=mPresetFilterSearchTime, _
+        Procedure:=callbackName, _
+        Schedule:=False
+
+    On Error GoTo 0
+
+    mPresetFilterSearchScheduled = _
+        False
+
+End Sub
+
+
+Private Function PresetFilterSearchCallbackName() As String
+
+    PresetFilterSearchCallbackName = _
+        "'" & _
+        Replace( _
+            ThisWorkbook.Name, _
+            "'", _
+            "''") & _
+        "'!ApplyPendingPresetFilterSearch"
+
+End Function
+
