@@ -56,6 +56,13 @@ Private Sub Worksheet_Change( _
             GoTo CleanUp
         End If
 
+        If changedCell.Column = 2 Then
+
+            UpdateRecordDateFromUUT _
+                changedCell
+
+        End If
+
         If changedCell.Column >= 5 _
             And changedCell.Column <= 9 Then
 
@@ -99,6 +106,13 @@ Private Sub Worksheet_Change( _
                         changedCell.Column)
 
                 If Len(fieldName) > 0 Then
+
+                    If changedCell.Column = 2 Then
+
+                        UpdateRecordDateFromUUT _
+                            changedCell
+
+                    End If
 
                     If changedCell.Column >= 5 _
                         And changedCell.Column <= 9 Then
@@ -260,3 +274,59 @@ Private Function SheetFieldName( _
 
 End Function
 
+Private Sub UpdateRecordDateFromUUT( _
+    ByVal uutCell As Range _
+)
+
+    Dim dateCell As Range
+
+    Dim recordDate As Date
+    Dim monthCode As String
+
+    Set dateCell = _
+        Me.Cells( _
+            uutCell.Row, _
+            1)
+
+    If Len(Trim$(CStr( _
+            uutCell.value2))) = 0 Then
+
+        dateCell.ClearContents
+
+        Exit Sub
+
+    End If
+
+    If Len(Trim$(CStr( _
+            dateCell.value2))) > 0 Then
+
+        Exit Sub
+
+    End If
+
+    recordDate = _
+        Date
+
+    monthCode = _
+        Choose( _
+            Month(recordDate), _
+            "JAN", _
+            "FEB", _
+            "MAR", _
+            "APR", _
+            "MAY", _
+            "JUN", _
+            "JUL", _
+            "AUG", _
+            "SEP", _
+            "OCT", _
+            "NOV", _
+            "DEC")
+
+    dateCell.Value = _
+        recordDate
+
+    dateCell.NumberFormat = _
+        "dd""" & monthCode & """yyyy"
+
+End Sub
