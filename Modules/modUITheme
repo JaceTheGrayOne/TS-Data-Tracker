@@ -1,0 +1,329 @@
+Option Explicit
+
+
+'============================================================
+' APPLICATION / TYPOGRAPHY
+'============================================================
+
+Public Const UI_APP_CAPTION As String = "Troubleshooting Database"
+
+Public Const UI_FONT As String = "Segoe UI"
+Public Const UI_SYMBOL_FONT As String = "Segoe UI Symbol"
+
+Public Const UI_TITLE_FONT_SIZE As Single = 13
+Public Const UI_PATH_FONT_SIZE As Single = 9
+Public Const UI_SEARCH_FONT_SIZE As Single = 10
+Public Const UI_ITEM_FONT_SIZE As Single = 9.5
+Public Const UI_BUTTON_FONT_SIZE As Single = 9
+Public Const UI_CHECK_FONT_SIZE As Single = 11
+
+
+'============================================================
+' INTERACTION
+'============================================================
+
+' 0 = unchanged; 1 = fully white.
+Public Const UI_HOVER_LIGHTEN As Double = 0.07
+
+Public Const UI_ACCENT_DARKEN As Double = 0.28
+Public Const UI_THEME_BORDER_DARKEN As Double = 0.18
+
+
+'============================================================
+' PICKER GEOMETRY
+'============================================================
+
+Public Const UI_ITEM_HEIGHT As Single = 16
+Public Const UI_ITEM_GAP As Single = 2
+Public Const UI_ITEM_PANEL_PADDING As Single = 6
+
+Public Const UI_ACCENT_WIDTH As Single = 4
+Public Const UI_CHECK_WIDTH As Single = 22
+
+
+'============================================================
+' PICKER DYNAMIC SIZING
+'============================================================
+
+Public Const UI_PICKER_MIN_VISIBLE_ITEMS As Long = 3
+Public Const UI_PICKER_MAX_VISIBLE_ITEMS As Long = 10
+
+Public Const UI_PICKER_FOOTER_GAP As Single = 10
+Public Const UI_PICKER_BOTTOM_MARGIN As Single = 12
+
+' Prevent short lists from producing an impractically narrow form.
+Public Const UI_PICKER_MIN_INSIDE_WIDTH As Single = 140
+
+Public Const UI_PICKER_WINDOW_MARGIN As Single = 24
+Public Const UI_PICKER_TEXT_RIGHT_PADDING As Single = 12
+Public Const UI_PICKER_SCROLLBAR_ALLOWANCE As Single = 18
+
+Public Const UI_SEARCH_HINT_LEFT_INSET As Single = 6
+Public Const UI_SEARCH_HINT_TOP_INSET As Single = 2
+
+
+'============================================================
+' GLOBAL UI PALETTE
+'============================================================
+
+Public Function UIColor_FormBackground() As Long
+
+    UIColor_FormBackground = _
+        RGB(48, 53, 59)
+
+End Function
+
+
+Public Function UIColor_PanelBackground() As Long
+
+    UIColor_PanelBackground = _
+        RGB(58, 64, 71)
+
+End Function
+
+
+Public Function UIColor_InputBackground() As Long
+
+    UIColor_InputBackground = _
+        RGB(68, 75, 83)
+
+End Function
+
+
+Public Function UIColor_InputBorder() As Long
+
+    UIColor_InputBorder = _
+        RGB(103, 112, 122)
+
+End Function
+
+
+Public Function UIColor_TextPrimary() As Long
+
+    UIColor_TextPrimary = _
+        RGB(244, 246, 248)
+
+End Function
+
+
+Public Function UIColor_TextMuted() As Long
+
+    UIColor_TextMuted = _
+        RGB(185, 192, 200)
+
+End Function
+
+
+Public Function UIColor_ButtonBackground() As Long
+
+    UIColor_ButtonBackground = _
+        RGB(69, 76, 84)
+
+End Function
+
+
+Public Function UIColor_ButtonText() As Long
+
+    UIColor_ButtonText = _
+        RGB(242, 244, 247)
+
+End Function
+
+
+'============================================================
+' PICKER CARD PALETTE
+'============================================================
+
+Public Function UIColor_ItemBackground() As Long
+
+    UIColor_ItemBackground = _
+        RGB(72, 79, 87)
+
+End Function
+
+
+Public Function UIColor_ItemBorder() As Long
+
+    UIColor_ItemBorder = _
+        RGB(102, 111, 121)
+
+End Function
+
+
+Public Function UIColor_ItemText() As Long
+
+    UIColor_ItemText = _
+        RGB(240, 243, 246)
+
+End Function
+
+
+'============================================================
+' PICKER THEME APPLICATION
+'============================================================
+
+Public Sub ApplyUIPickerTheme( _
+    ByVal lbl As MSForms.Label, _
+    ByVal fieldName As String, _
+    ByVal ItemValue As String _
+)
+
+    Dim fillColor As Long
+    Dim textColor As Long
+    Dim isBold As Boolean
+
+    '----------------------------------------------------
+    ' DEFAULT APPEARANCE
+    '----------------------------------------------------
+    lbl.BackColor = _
+        UIColor_ItemBackground()
+
+    lbl.ForeColor = _
+        UIColor_ItemText()
+
+    lbl.BorderColor = _
+        UIColor_ItemBorder()
+
+    lbl.Font.Name = _
+        UI_FONT
+
+    lbl.Font.Size = _
+        UI_ITEM_FONT_SIZE
+
+    lbl.Font.Bold = _
+        False
+
+    '----------------------------------------------------
+    ' SEMANTIC COLOR OVERRIDE
+    '----------------------------------------------------
+    ' tbl_Theme controls picker color, but Bold is intentionally
+    ' reserved for worksheet-cell theming.
+    If TryGetTheme( _
+            fieldName, _
+            ItemValue, _
+            fillColor, _
+            textColor, _
+            isBold) Then
+
+        lbl.BackColor = _
+            fillColor
+
+        lbl.ForeColor = _
+            textColor
+
+        lbl.BorderColor = _
+            UIDarkenColor( _
+                fillColor, _
+                UI_THEME_BORDER_DARKEN)
+
+    End If
+
+End Sub
+
+
+'============================================================
+' COLOR UTILITIES
+'============================================================
+
+Public Function UILightenColor( _
+    ByVal sourceColor As Long, _
+    ByVal amount As Double _
+) As Long
+
+    UILightenColor = _
+        UIBlendColor( _
+            sourceColor, _
+            RGB(255, 255, 255), _
+            amount)
+
+End Function
+
+
+Public Function UIDarkenColor( _
+    ByVal sourceColor As Long, _
+    ByVal amount As Double _
+) As Long
+
+    UIDarkenColor = _
+        UIBlendColor( _
+            sourceColor, _
+            RGB(0, 0, 0), _
+            amount)
+
+End Function
+
+
+Private Function UIBlendColor( _
+    ByVal sourceColor As Long, _
+    ByVal targetColor As Long, _
+    ByVal amount As Double _
+) As Long
+
+    Dim sourceR As Long
+    Dim sourceG As Long
+    Dim sourceB As Long
+
+    Dim targetR As Long
+    Dim targetG As Long
+    Dim targetB As Long
+
+    Dim resultR As Long
+    Dim resultG As Long
+    Dim resultB As Long
+
+    ' Edge Case Defense:
+    ' Clamp blend factor to the valid interpolation range.
+    If amount < 0 Then
+        amount = 0
+    End If
+
+    If amount > 1 Then
+        amount = 1
+    End If
+
+    ' VBA RGB() stores channels as BGR within the Long value.
+    sourceR = _
+        sourceColor And &HFF&
+
+    sourceG = _
+        (sourceColor \ &H100&) _
+        And &HFF&
+
+    sourceB = _
+        (sourceColor \ &H10000) _
+        And &HFF&
+
+    targetR = _
+        targetColor And &HFF&
+
+    targetG = _
+        (targetColor \ &H100&) _
+        And &HFF&
+
+    targetB = _
+        (targetColor \ &H10000) _
+        And &HFF&
+
+    resultR = _
+        CLng( _
+            sourceR + _
+            ((targetR - sourceR) * amount))
+
+    resultG = _
+        CLng( _
+            sourceG + _
+            ((targetG - sourceG) * amount))
+
+    resultB = _
+        CLng( _
+            sourceB + _
+            ((targetB - sourceB) * amount))
+
+    UIBlendColor = _
+        RGB( _
+            resultR, _
+            resultG, _
+            resultB)
+
+End Function
+
