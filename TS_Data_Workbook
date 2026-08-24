@@ -323,10 +323,11 @@ Private Sub UpdateRecordDateFromUUT( _
             "NOV", _
             "DEC")
 
-    dateCell.Value = _
-        recordDate
-
     dateCell.NumberFormat = _
         "dd""" & monthCode & """yyyy"
 
+    dateCell.value2 = _
+        CDbl(recordDate)
+
 End Sub
+
