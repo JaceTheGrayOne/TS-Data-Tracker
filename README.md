@@ -20,7 +20,7 @@
 │  ├─ modRouting
 │  ├─ modSheetView
 │  ├─ modState
-│  ├─ modTestHeirarchy
+│  ├─ modTestHierarchy
 │  ├─ modTestTree
 │  ├─ modTheme
 │  └─ modUITheme
@@ -39,7 +39,7 @@
 | Change custom picker behavior        | `Forms/frmPicker`, `Class_Modules/clsPickerItem`, `modPicker` |
 | Change picker appearance             | `modUITheme`, `modTheme`, `clsPickerItem`                     |
 | Change semantic worksheet colors     | `modTheme`, `tbl_Theme` in workbook                           |
-| Change hierarchy generation          | `modTestHeirarchy`                                            |
+| Change hierarchy generation          | `modTestHierarchy`                                            |
 | Query hierarchy nodes                | `modTestTree`, `clsTestNode`                                  |
 | Change legacy routing                | `modRouting`, `modCatalog`                                    |
 | Change Ribbon UI                     | `customUI14(TS_DB).xml`                                       |
@@ -550,7 +550,7 @@ Sub Step 4 → AE
 
 ---
 
-## `Modules/modTestHeirarchy`
+## `Modules/modTestHierarchy`
 
 **Purpose:**
 Build `tbl_TestHierarchy` from the indentation-based source outline in `tbl_TestOutline`.
@@ -647,7 +647,7 @@ Read/query the generated Test hierarchy as `clsTestNode` objects.
 
 **Important distinction:**
 
-* `modTestHeirarchy` builds the hierarchy.
+* `modTestHierarchy` builds the hierarchy.
 * `modTestTree` reads/traverses the hierarchy.
 
 ---
@@ -768,7 +768,7 @@ modTheme
 ```text
 tbl_TestOutline
     ↓
-modTestHeirarchy.RebuildTestHierarchy
+modTestHierarchy.RebuildTestHierarchy
     ↓
 tbl_TestHierarchy
     ↓
@@ -865,7 +865,7 @@ Semantic data colors
     → modTheme
 
 Hierarchy generation
-    → modTestHeirarchy
+    → modTestHierarchy
 
 Hierarchy traversal
     → modTestTree / clsTestNode
