@@ -378,7 +378,10 @@ Private Sub InvalidatePresetFilterControls()
         "tglLRUOPU"
 
     mRibbon.InvalidateControl _
-        "tglTestFunctional"
+        "tglTestFunctionalRed"
+
+    mRibbon.InvalidateControl _
+        "tglTestFunctionalBlack"
 
     mRibbon.InvalidateControl _
         "tglTestThermal"
