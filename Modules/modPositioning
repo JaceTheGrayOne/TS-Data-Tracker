@@ -1,0 +1,205 @@
+Option Explicit
+
+
+'============================================================
+' WINDOWS API
+'============================================================
+
+#If VBA7 Then
+
+    Private Declare PtrSafe Function GetDpiForWindow _
+        Lib "user32" ( _
+        ByVal hWnd As LongPtr _
+    ) As Long
+
+#Else
+
+    Private Declare Function GetDpiForWindow _
+        Lib "user32" ( _
+        ByVal hWnd As Long _
+    ) As Long
+
+#End If
+
+
+'============================================================
+' CONFIGURATION
+'============================================================
+
+Private Const POINTS_PER_INCH As Double = 72#
+Private Const DEFAULT_DPI As Long = 96
+
+Private Const PICKER_GAP_PIXELS As Long = 8
+Private Const WINDOW_MARGIN_POINTS As Double = 8#
+
+
+'============================================================
+' PUBLIC INTERFACE
+'============================================================
+
+Public Sub PositionPickerNearCell( _
+    ByVal picker As Object, _
+    ByVal targetCell As Range _
+)
+
+    Dim win As Window
+
+    Dim dpi As Long
+
+    Dim cellLeftPixels As Long
+    Dim cellRightPixels As Long
+    Dim cellTopPixels As Long
+
+    Dim cellLeftPoints As Double
+    Dim cellRightPoints As Double
+    Dim cellTopPoints As Double
+
+    Dim gapPoints As Double
+
+    Dim pickerLeft As Double
+    Dim pickerTop As Double
+
+    Dim excelLeft As Double
+    Dim excelTop As Double
+    Dim excelRight As Double
+    Dim excelBottom As Double
+
+    Set win = _
+        ActiveWindow
+
+    If win Is Nothing Then
+        Exit Sub
+    End If
+
+    dpi = _
+        GetDpiForWindow( _
+            Application.hWnd)
+
+    ' Edge Case Defense:
+    ' Fall back to standard Windows DPI if window DPI is unavailable.
+    If dpi <= 0 Then
+        dpi = DEFAULT_DPI
+    End If
+
+    '----------------------------------------------------
+    ' SCREEN COORDINATES
+    '----------------------------------------------------
+    cellLeftPixels = _
+        win.PointsToScreenPixelsX( _
+            CLng(targetCell.Left))
+
+    cellRightPixels = _
+        win.PointsToScreenPixelsX( _
+            CLng(targetCell.Left + targetCell.Width))
+
+    cellTopPixels = _
+        win.PointsToScreenPixelsY( _
+            CLng(targetCell.Top))
+
+    ' UserForm position is expressed in points, not screen pixels.
+    cellLeftPoints = _
+        PixelsToPoints( _
+            cellLeftPixels, _
+            dpi)
+
+    cellRightPoints = _
+        PixelsToPoints( _
+            cellRightPixels, _
+            dpi)
+
+    cellTopPoints = _
+        PixelsToPoints( _
+            cellTopPixels, _
+            dpi)
+
+    gapPoints = _
+        PixelsToPoints( _
+            PICKER_GAP_PIXELS, _
+            dpi)
+
+    '----------------------------------------------------
+    ' INITIAL POSITION
+    '----------------------------------------------------
+    pickerLeft = _
+        cellRightPoints + gapPoints
+
+    pickerTop = _
+        cellTopPoints
+
+    '----------------------------------------------------
+    ' WINDOW CONSTRAINTS
+    '----------------------------------------------------
+    excelLeft = _
+        Application.Left
+
+    excelTop = _
+        Application.Top
+
+    excelRight = _
+        Application.Left + Application.Width
+
+    excelBottom = _
+        Application.Top + Application.Height
+
+    If pickerLeft + picker.Width > _
+            excelRight - WINDOW_MARGIN_POINTS Then
+
+        pickerLeft = _
+            cellLeftPoints _
+            - picker.Width _
+            - gapPoints
+
+    End If
+
+    If pickerLeft < _
+            excelLeft + WINDOW_MARGIN_POINTS Then
+
+        pickerLeft = _
+            excelLeft + WINDOW_MARGIN_POINTS
+
+    End If
+
+    If pickerTop + picker.Height > _
+            excelBottom - WINDOW_MARGIN_POINTS Then
+
+        pickerTop = _
+            excelBottom _
+            - picker.Height _
+            - WINDOW_MARGIN_POINTS
+
+    End If
+
+    If pickerTop < _
+            excelTop + WINDOW_MARGIN_POINTS Then
+
+        pickerTop = _
+            excelTop + WINDOW_MARGIN_POINTS
+
+    End If
+
+    picker.StartUpPosition = _
+        0
+
+    picker.Left = _
+        pickerLeft
+
+    picker.Top = _
+        pickerTop
+
+End Sub
+
+
+'============================================================
+' INTERNAL HELPERS
+'============================================================
+
+Private Function PixelsToPoints( _
+    ByVal pixels As Double, _
+    ByVal dpi As Long _
+) As Double
+
+    PixelsToPoints = _
+        pixels * POINTS_PER_INCH / dpi
+
+End Function
+
