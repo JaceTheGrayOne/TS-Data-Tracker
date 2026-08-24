@@ -1,0 +1,214 @@
+Option Explicit
+
+
+'============================================================
+' CONTROL REFERENCES
+'============================================================
+
+Public WithEvents ItemLabel As MSForms.Label
+Public AccentLabel As MSForms.Label
+
+
+'============================================================
+' MODULE STATE
+'============================================================
+
+Private mValue As String
+Private mKey As String
+Private mPicker As frmPicker
+
+Private mNormalBackColor As Long
+Private mNormalForeColor As Long
+Private mNormalBorderColor As Long
+Private mNormalBold As Boolean
+
+Private mIsSelected As Boolean
+
+
+'============================================================
+' PUBLIC INTERFACE
+'============================================================
+
+Public Sub Initialize( _
+    ByVal itemControl As MSForms.Label, _
+    ByVal accentControl As MSForms.Label, _
+    ByVal ItemValue As String, _
+    ByVal ItemKey As String, _
+    ByVal picker As frmPicker _
+)
+
+    Set ItemLabel = _
+        itemControl
+
+    Set AccentLabel = _
+        accentControl
+
+    mValue = _
+        ItemValue
+
+    mKey = _
+        ItemKey
+
+    Set mPicker = _
+        picker
+
+    ' Capture the themed card appearance as the baseline for
+    ' hover and selection restoration.
+    mNormalBackColor = _
+        ItemLabel.BackColor
+
+    mNormalForeColor = _
+        ItemLabel.ForeColor
+
+    mNormalBorderColor = _
+        ItemLabel.BorderColor
+
+    mNormalBold = _
+        ItemLabel.Font.Bold
+
+    RestoreNormalAppearance
+
+End Sub
+
+
+Public Property Get ItemValue() As String
+
+    ItemValue = _
+        mValue
+
+End Property
+
+
+Public Property Get ItemKey() As String
+
+    ItemKey = _
+        mKey
+
+End Property
+
+
+Public Sub SetSelected( _
+    ByVal selected As Boolean _
+)
+
+    mIsSelected = _
+        selected
+
+    RestoreNormalAppearance
+
+End Sub
+
+
+Public Sub SetHovered( _
+    ByVal hovered As Boolean _
+)
+
+    If hovered Then
+
+        ItemLabel.BackColor = _
+            UILightenColor( _
+                mNormalBackColor, _
+                UI_HOVER_LIGHTEN)
+
+        ItemLabel.ForeColor = _
+            mNormalForeColor
+
+        ItemLabel.BorderColor = _
+            UIDarkenColor( _
+                mNormalBackColor, _
+                UI_ACCENT_DARKEN)
+
+        ItemLabel.Font.Bold = _
+            True
+
+        AccentLabel.BackColor = _
+            UIDarkenColor( _
+                mNormalBackColor, _
+                UI_ACCENT_DARKEN)
+
+        AccentLabel.Visible = _
+            True
+
+    Else
+
+        RestoreNormalAppearance
+
+    End If
+
+End Sub
+
+
+'============================================================
+' APPEARANCE
+'============================================================
+
+Private Sub RestoreNormalAppearance()
+
+    ItemLabel.Caption = _
+        "   " & mValue
+
+    ItemLabel.BackColor = _
+        mNormalBackColor
+
+    ItemLabel.ForeColor = _
+        mNormalForeColor
+
+    ItemLabel.BorderColor = _
+        mNormalBorderColor
+
+    ItemLabel.Font.Bold = _
+        mNormalBold
+
+    AccentLabel.BackColor = _
+        UIDarkenColor( _
+            mNormalBackColor, _
+            UI_ACCENT_DARKEN)
+
+    If mIsSelected Then
+
+        AccentLabel.Visible = _
+            True
+
+        ItemLabel.BorderColor = _
+            UIDarkenColor( _
+                mNormalBackColor, _
+                UI_ACCENT_DARKEN)
+
+        ItemLabel.Font.Bold = _
+            True
+
+    Else
+
+        AccentLabel.Visible = _
+            False
+
+    End If
+
+End Sub
+
+
+'============================================================
+' CONTROL EVENTS
+'============================================================
+
+Private Sub ItemLabel_Click()
+
+    mPicker.CommitValue _
+        mValue, _
+        mKey
+
+End Sub
+
+
+Private Sub ItemLabel_MouseMove( _
+    ByVal Button As Integer, _
+    ByVal Shift As Integer, _
+    ByVal X As Single, _
+    ByVal Y As Single _
+)
+
+    mPicker.HoverItem _
+        Me
+
+End Sub
+
