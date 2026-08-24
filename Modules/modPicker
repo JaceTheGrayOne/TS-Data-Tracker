@@ -1,0 +1,277 @@
+Option Explicit
+
+
+'============================================================
+' PUBLIC INTERFACE
+'============================================================
+
+Public Sub OpenPickerForCell( _
+    ByVal targetCell As Range _
+)
+
+    Dim values As Collection
+    Dim roots As Collection
+
+    Dim fieldName As String
+    Dim parentField As String
+
+    Dim parentValue As String
+    Dim parentNodeID As String
+    Dim testName As String
+
+    Dim parentIDColumn As Long
+    Dim targetIDColumn As Long
+
+    Dim contextText As String
+
+    If targetCell Is Nothing Then
+        Exit Sub
+    End If
+
+    If targetCell.CountLarge <> 1 Then
+        Exit Sub
+    End If
+
+    Select Case targetCell.Column
+
+        '----------------------------------------------------
+        ' UUT
+        '----------------------------------------------------
+        Case 2
+
+            fieldName = _
+                "UUT"
+
+            Set values = _
+                GetCatalogValues( _
+                    "lst_UUT", _
+                    "UUT")
+
+            contextText = _
+                vbNullString
+
+            targetIDColumn = _
+                0
+
+        '----------------------------------------------------
+        ' TEST
+        '----------------------------------------------------
+        Case 4
+
+            fieldName = _
+                "Test"
+
+            Set values = _
+                GetCatalogValues( _
+                    "lst_Test", _
+                    "Test")
+
+            contextText = _
+                vbNullString
+
+            targetIDColumn = _
+                0
+
+        '----------------------------------------------------
+        ' TEST STEP
+        '----------------------------------------------------
+        Case 5
+
+            fieldName = _
+                "Test Step"
+
+            testName = _
+                Trim$(CStr( _
+                    targetCell.Worksheet.Cells( _
+                        targetCell.Row, _
+                        4).value2))
+
+            If Len(testName) = 0 Then
+                Exit Sub
+            End If
+
+            ' Prefer hierarchy roots; use legacy routing for
+            ' tests not yet migrated to tbl_TestHierarchy.
+            Set roots = _
+                GetRootNodes( _
+                    testName)
+
+            If roots.Count > 0 Then
+
+                Set values = _
+                    roots
+
+                targetIDColumn = _
+                    NodeIDColumn( _
+                        fieldName)
+
+            Else
+
+                Set values = _
+                    GetRoutedValues( _
+                        "Test", _
+                        testName, _
+                        fieldName)
+
+                targetIDColumn = _
+                    0
+
+            End If
+
+            contextText = _
+                BuildPickerContext( _
+                    targetCell)
+
+        '----------------------------------------------------
+        ' SUBORDINATE TEST HIERARCHY
+        '----------------------------------------------------
+        Case 6, 7, 8, 9
+
+            fieldName = _
+                FieldNameFromColumn( _
+                    targetCell.Column)
+
+            parentField = _
+                FieldNameFromColumn( _
+                    targetCell.Column - 1)
+
+            If Len(fieldName) = 0 _
+                Or Len(parentField) = 0 Then
+
+                Exit Sub
+
+            End If
+
+            parentValue = _
+                Trim$(CStr( _
+                    targetCell.Worksheet.Cells( _
+                        targetCell.Row, _
+                        targetCell.Column - 1).value2))
+
+            If Len(parentValue) = 0 _
+                Or parentValue = "-" Then
+
+                Exit Sub
+
+            End If
+
+            parentIDColumn = _
+                NodeIDColumn( _
+                    parentField)
+
+            parentNodeID = _
+                vbNullString
+
+            If parentIDColumn > 0 Then
+
+                parentNodeID = _
+                    Trim$(CStr( _
+                        targetCell.Worksheet.Cells( _
+                            targetCell.Row, _
+                            parentIDColumn).value2))
+
+            End If
+
+            If Len(parentNodeID) > 0 Then
+
+                Set values = _
+                    GetChildNodes( _
+                        parentNodeID)
+
+                targetIDColumn = _
+                    NodeIDColumn( _
+                        fieldName)
+
+            Else
+
+                ' No Node ID indicates a legacy-routed parent.
+                Set values = _
+                    GetRoutedValues( _
+                        parentField, _
+                        parentValue, _
+                        fieldName)
+
+                targetIDColumn = _
+                    0
+
+            End If
+
+            contextText = _
+                BuildPickerContext( _
+                    targetCell)
+
+        Case Else
+
+            Exit Sub
+
+    End Select
+
+    If values Is Nothing Then
+        Exit Sub
+    End If
+
+    If values.Count = 0 Then
+        Exit Sub
+    End If
+
+    frmPicker.LoadPicker _
+        targetCell, _
+        fieldName, _
+        values, _
+        contextText, _
+        targetIDColumn
+
+    PositionPickerNearCell _
+        frmPicker, _
+        targetCell
+
+    frmPicker.Show _
+        vbModeless
+
+End Sub
+
+
+'============================================================
+' INTERNAL HELPERS
+'============================================================
+
+Private Function BuildPickerContext( _
+    ByVal targetCell As Range _
+) As String
+
+    Dim columnNumber As Long
+
+    Dim valueText As String
+    Dim result As String
+
+    For columnNumber = _
+        4 To targetCell.Column - 1
+
+        valueText = _
+            Trim$(CStr( _
+                targetCell.Worksheet.Cells( _
+                    targetCell.Row, _
+                    columnNumber).value2))
+
+        If Len(valueText) > 0 _
+            And valueText <> "-" Then
+
+            If Len(result) > 0 Then
+
+                result = _
+                    result & "  >  "
+
+            End If
+
+            result = _
+                result & valueText
+
+        End If
+
+    Next columnNumber
+
+    BuildPickerContext = _
+        result
+
+End Function
+
