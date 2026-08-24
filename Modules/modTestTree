@@ -354,7 +354,7 @@ Public Sub TestTreeEngine()
 
     Set nodes = _
         GetRootNodes( _
-            "Functional")
+            "Functional (Red)")
 
     If nodes.Count > 0 Then
 
@@ -365,21 +365,21 @@ Public Sub TestTreeEngine()
             And node.Label = "7.2 - Test Setup" Then
 
             Debug.Print _
-                "PASS  First Functional root = " & _
+                "PASS  First Functional (Red) root = " & _
                 node.NodeID & _
                 " [" & node.Label & "]"
 
         Else
 
             Debug.Print _
-                "FAIL  Unexpected first Functional root."
+                "FAIL  Unexpected first Functional (Red) root."
 
         End If
 
     Else
 
         Debug.Print _
-            "FAIL  Functional returned no root nodes."
+            "FAIL  Functional (Red) returned no root nodes."
 
     End If
 
@@ -457,6 +457,36 @@ Public Sub TestTreeEngine()
 
         Debug.Print _
             "FAIL  TN-000015 should have children."
+
+    End If
+
+    Set nodes = _
+        GetRootNodes( _
+            "Functional (Black)")
+
+    If nodes.Count > 0 Then
+
+        Set node = _
+            nodes(1)
+
+        If node.Label = "Check Engineering Flags" Then
+
+            Debug.Print _
+                "PASS  First Functional (Black) root = " & _
+                node.NodeID & _
+                " [" & node.Label & "]"
+
+        Else
+
+            Debug.Print _
+                "FAIL  Unexpected first Functional (Black) root."
+
+        End If
+
+    Else
+
+        Debug.Print _
+            "FAIL  Functional (Black) returned no root nodes."
 
     End If
 
