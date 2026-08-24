@@ -103,9 +103,16 @@
                                 label="Test:"/>
 
                             <toggleButton
-                                id="tglTestFunctional"
-                                label="Functional"
-                                tag="Functional"
+                                id="tglTestFunctionalRed"
+                                label="Functional (Red)"
+                                tag="Functional (Red)"
+                                getPressed="Ribbon_TestFilterGetPressed"
+                                onAction="Ribbon_TestFilterChanged"/>
+
+                            <toggleButton
+                                id="tglTestFunctionalBlack"
+                                label="Functional (Black)"
+                                tag="Functional (Black)"
                                 getPressed="Ribbon_TestFilterGetPressed"
                                 onAction="Ribbon_TestFilterChanged"/>
 
