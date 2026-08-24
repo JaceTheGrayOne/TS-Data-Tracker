@@ -1,0 +1,729 @@
+Option Explicit
+
+
+'============================================================
+' ENUMERATIONS
+'============================================================
+
+Public Enum ChildState
+    csBlank = 0
+    csRouted = 1
+    csNA = 2
+End Enum
+
+
+'============================================================
+' STATE RESOLUTION
+'============================================================
+
+Public Function GetChildState( _
+    ByVal parentField As String, _
+    ByVal parentValue As String, _
+    ByVal childField As String _
+) As ChildState
+
+    Dim listTable As String
+    Dim listColumn As String
+
+    If Len(Trim$(parentValue)) = 0 Then
+
+        GetChildState = _
+            csBlank
+
+        Exit Function
+
+    End If
+
+    If TryGetRoute( _
+            parentField, _
+            parentValue, _
+            childField, _
+            listTable, _
+            listColumn) Then
+
+        GetChildState = _
+            csRouted
+
+    Else
+
+        GetChildState = _
+            csNA
+
+    End If
+
+End Function
+
+
+Public Function GetNodeChildState( _
+    ByVal NodeID As String _
+) As ChildState
+
+    If Len(Trim$(NodeID)) = 0 Then
+
+        GetNodeChildState = _
+            csBlank
+
+        Exit Function
+
+    End If
+
+    If HasChildNodes(NodeID) Then
+
+        GetNodeChildState = _
+            csRouted
+
+    Else
+
+        GetNodeChildState = _
+            csNA
+
+    End If
+
+End Function
+
+
+Private Function GetCurrentChildState( _
+    ByVal ws As Worksheet, _
+    ByVal rowNumber As Long, _
+    ByVal parentField As String, _
+    ByVal childField As String _
+) As ChildState
+
+    Dim parentValue As String
+    Dim parentNodeID As String
+
+    Dim idColumn As Long
+
+    Dim roots As Collection
+
+    parentValue = _
+        Trim$(CStr( _
+            ws.Cells( _
+                rowNumber, _
+                FieldColumn(parentField)).value2))
+
+    If Len(parentValue) = 0 Then
+
+        GetCurrentChildState = _
+            csBlank
+
+        Exit Function
+
+    End If
+
+    '----------------------------------------------------
+    ' TEST ROOT
+    '----------------------------------------------------
+    ' Prefer hierarchy roots.
+    ' use legacy routing for Tests not yet migrated to
+    ' tbl_TestHierarchy.
+    If StrComp( _
+            parentField, _
+            "Test", _
+            vbTextCompare) = 0 Then
+
+        Set roots = _
+            GetRootNodes( _
+                parentValue)
+
+        If roots.Count > 0 Then
+
+            GetCurrentChildState = _
+                csRouted
+
+        Else
+
+            GetCurrentChildState = _
+                GetChildState( _
+                    parentField, _
+                    parentValue, _
+                    childField)
+
+        End If
+
+        Exit Function
+
+    End If
+
+    '----------------------------------------------------
+    ' TREE IDENTITY
+    '----------------------------------------------------
+    idColumn = _
+        NodeIDColumn( _
+            parentField)
+
+    If idColumn > 0 Then
+
+        parentNodeID = _
+            Trim$(CStr( _
+                ws.Cells( _
+                    rowNumber, _
+                    idColumn).value2))
+
+    End If
+
+    If Len(parentNodeID) > 0 Then
+
+        GetCurrentChildState = _
+            GetNodeChildState( _
+                parentNodeID)
+
+    Else
+
+        ' No Node ID indicates a legacy-routed value.
+        GetCurrentChildState = _
+            GetChildState( _
+                parentField, _
+                parentValue, _
+                childField)
+
+    End If
+
+End Function
+
+
+'============================================================
+' RECONCILIATION
+'============================================================
+
+Public Sub ReconcileAfterChange( _
+    ByVal ws As Worksheet, _
+    ByVal rowNumber As Long, _
+    ByVal changedField As String _
+)
+
+    Dim changedColumn As Long
+    Dim childField As String
+
+    changedColumn = _
+        FieldColumn( _
+            changedField)
+
+    If changedColumn = 0 Then
+
+        Err.Raise _
+            vbObjectError + 1100, _
+            "ReconcileAfterChange", _
+            "Unknown field '" & changedField & "'."
+
+    End If
+
+    ' Clear stale Node ID before evaluating downstream state.
+    SyncNodeIdentityForField _
+        ws, _
+        rowNumber, _
+        changedField
+
+    childField = _
+        NextField( _
+            changedField)
+
+    If Len(childField) = 0 Then
+        Exit Sub
+    End If
+
+    ClearDescendants _
+        ws, _
+        rowNumber, _
+        changedField
+
+    ApplyChildState _
+        ws, _
+        rowNumber, _
+        changedField
+
+End Sub
+
+
+Public Sub SyncNodeIdentityForField( _
+    ByVal ws As Worksheet, _
+    ByVal rowNumber As Long, _
+    ByVal fieldName As String _
+)
+
+    Dim idColumn As Long
+
+    Dim visibleValue As String
+    Dim NodeID As String
+
+    Dim node As clsTestNode
+
+    idColumn = _
+        NodeIDColumn( _
+            fieldName)
+
+    If idColumn = 0 Then
+        Exit Sub
+    End If
+
+    visibleValue = _
+        Trim$(CStr( _
+            ws.Cells( _
+                rowNumber, _
+                FieldColumn(fieldName)).value2))
+
+    NodeID = _
+        Trim$(CStr( _
+            ws.Cells( _
+                rowNumber, _
+                idColumn).value2))
+
+    ' Blank and N/A values cannot carry tree identity.
+    If Len(visibleValue) = 0 _
+        Or visibleValue = "-" Then
+
+        If Len(NodeID) > 0 Then
+
+            ws.Cells( _
+                rowNumber, _
+                idColumn).ClearContents
+
+        End If
+
+        Exit Sub
+
+    End If
+
+    ' Missing ID probably indicates a legacy-routed value.
+    If Len(NodeID) = 0 Then
+        Exit Sub
+    End If
+
+    Set node = _
+        GetNodeByID( _
+            NodeID)
+
+    If node Is Nothing Then
+
+        ws.Cells( _
+            rowNumber, _
+            idColumn).ClearContents
+
+        Exit Sub
+
+    End If
+
+    If StrComp( _
+            node.Label, _
+            visibleValue, _
+            vbTextCompare) <> 0 Then
+
+        ws.Cells( _
+            rowNumber, _
+            idColumn).ClearContents
+
+    End If
+
+End Sub
+
+
+Private Sub ApplyChildState( _
+    ByVal ws As Worksheet, _
+    ByVal rowNumber As Long, _
+    ByVal parentField As String _
+)
+
+    Dim childField As String
+    Dim state As ChildState
+
+    childField = _
+        NextField( _
+            parentField)
+
+    If Len(childField) = 0 Then
+        Exit Sub
+    End If
+
+    state = _
+        GetCurrentChildState( _
+            ws, _
+            rowNumber, _
+            parentField, _
+            childField)
+
+    Select Case state
+
+        Case csBlank
+
+            Exit Sub
+
+        Case csRouted
+
+            Exit Sub
+
+        Case csNA
+
+            ' Leaf selections mark all remaining fields N/A.
+            FillRemainingNA _
+                ws, _
+                rowNumber, _
+                childField
+
+    End Select
+
+End Sub
+
+
+Private Sub ClearDescendants( _
+    ByVal ws As Worksheet, _
+    ByVal rowNumber As Long, _
+    ByVal parentField As String _
+)
+
+    Dim childField As String
+    Dim childCell As Range
+
+    Dim idColumn As Long
+
+    childField = _
+        NextField( _
+            parentField)
+
+    Do While Len(childField) > 0
+
+        Set childCell = _
+            ws.Cells( _
+                rowNumber, _
+                FieldColumn(childField))
+
+        childCell.ClearContents
+
+        ResetCellTheme _
+            childCell
+
+        idColumn = _
+            NodeIDColumn( _
+                childField)
+
+        If idColumn > 0 Then
+
+            ws.Cells( _
+                rowNumber, _
+                idColumn).ClearContents
+
+        End If
+
+        childField = _
+            NextField( _
+                childField)
+
+    Loop
+
+End Sub
+
+
+Private Sub FillRemainingNA( _
+    ByVal ws As Worksheet, _
+    ByVal rowNumber As Long, _
+    ByVal startingField As String _
+)
+
+    Dim fieldName As String
+    Dim targetCell As Range
+
+    Dim idColumn As Long
+
+    fieldName = _
+        startingField
+
+    Do While Len(fieldName) > 0
+
+        Set targetCell = _
+            ws.Cells( _
+                rowNumber, _
+                FieldColumn(fieldName))
+
+        targetCell.Value = _
+            "-"
+
+        ApplyThemeToCell _
+            targetCell, _
+            fieldName
+
+        ' "-" is display-only and carries no Node ID.
+        idColumn = _
+            NodeIDColumn( _
+                fieldName)
+
+        If idColumn > 0 Then
+
+            ws.Cells( _
+                rowNumber, _
+                idColumn).ClearContents
+
+        End If
+
+        fieldName = _
+            NextField( _
+                fieldName)
+
+    Loop
+
+End Sub
+
+
+'============================================================
+' FIELD MAPPING
+'============================================================
+
+Public Function NextField( _
+    ByVal fieldName As String _
+) As String
+
+    Select Case LCase$(Trim$(fieldName))
+
+        Case "test"
+
+            NextField = _
+                "Test Step"
+
+        Case "test step"
+
+            NextField = _
+                "Sub Step 1"
+
+        Case "sub step 1"
+
+            NextField = _
+                "Sub Step 2"
+
+        Case "sub step 2"
+
+            NextField = _
+                "Sub Step 3"
+
+        Case "sub step 3"
+
+            NextField = _
+                "Sub Step 4"
+
+        Case "sub step 4"
+
+            NextField = _
+                vbNullString
+
+        Case Else
+
+            Err.Raise _
+                vbObjectError + 1101, _
+                "NextField", _
+                "Unknown field '" & fieldName & "'."
+
+    End Select
+
+End Function
+
+
+Public Function FieldColumn( _
+    ByVal fieldName As String _
+) As Long
+
+    Select Case LCase$(Trim$(fieldName))
+
+        Case "test"
+
+            FieldColumn = _
+                4       ' D
+
+        Case "test step"
+
+            FieldColumn = _
+                5       ' E
+
+        Case "sub step 1"
+
+            FieldColumn = _
+                6       ' F
+
+        Case "sub step 2"
+
+            FieldColumn = _
+                7       ' G
+
+        Case "sub step 3"
+
+            FieldColumn = _
+                8       ' H
+
+        Case "sub step 4"
+
+            FieldColumn = _
+                9       ' I
+
+        Case Else
+
+            FieldColumn = _
+                0
+
+    End Select
+
+End Function
+
+
+Public Function FieldNameFromColumn( _
+    ByVal columnNumber As Long _
+) As String
+
+    Select Case columnNumber
+
+        Case 4
+
+            FieldNameFromColumn = _
+                "Test"
+
+        Case 5
+
+            FieldNameFromColumn = _
+                "Test Step"
+
+        Case 6
+
+            FieldNameFromColumn = _
+                "Sub Step 1"
+
+        Case 7
+
+            FieldNameFromColumn = _
+                "Sub Step 2"
+
+        Case 8
+
+            FieldNameFromColumn = _
+                "Sub Step 3"
+
+        Case 9
+
+            FieldNameFromColumn = _
+                "Sub Step 4"
+
+        Case Else
+
+            FieldNameFromColumn = _
+                vbNullString
+
+    End Select
+
+End Function
+
+
+Public Function NodeIDColumn( _
+    ByVal fieldName As String _
+) As Long
+
+    Select Case LCase$(Trim$(fieldName))
+
+        Case "test step"
+
+            NodeIDColumn = _
+                27      ' AA
+
+        Case "sub step 1"
+
+            NodeIDColumn = _
+                28      ' AB
+
+        Case "sub step 2"
+
+            NodeIDColumn = _
+                29      ' AC
+
+        Case "sub step 3"
+
+            NodeIDColumn = _
+                30      ' AD
+
+        Case "sub step 4"
+
+            NodeIDColumn = _
+                31      ' AE
+
+        Case Else
+
+            NodeIDColumn = _
+                0
+
+    End Select
+
+End Function
+
+
+'============================================================
+' TEST HARNESS
+'============================================================
+
+Public Sub TestStateEngine()
+
+    Dim roots As Collection
+
+    Debug.Print String(70, "=")
+    Debug.Print "STATE ENGINE TEST"
+    Debug.Print String(70, "=")
+
+    Set roots = _
+        GetRootNodes( _
+            "Functional")
+
+    If roots.Count > 0 Then
+
+        Debug.Print _
+            "PASS  Functional has tree roots."
+
+    Else
+
+        Debug.Print _
+            "FAIL  Functional has no tree roots."
+
+    End If
+
+    If GetNodeChildState("TN-000001") = csRouted Then
+
+        Debug.Print _
+            "PASS  TN-000001 is ROUTED."
+
+    Else
+
+        Debug.Print _
+            "FAIL  TN-000001 should be ROUTED."
+
+    End If
+
+    If GetNodeChildState("TN-000002") = csRouted Then
+
+        Debug.Print _
+            "PASS  TN-000002 is ROUTED."
+
+    Else
+
+        Debug.Print _
+            "FAIL  TN-000002 should be ROUTED."
+
+    End If
+
+    If GetNodeChildState("TN-000003") = csNA Then
+
+        Debug.Print _
+            "PASS  TN-000003 is N/A / leaf."
+
+    Else
+
+        Debug.Print _
+            "FAIL  TN-000003 should be a leaf."
+
+    End If
+
+    If GetNodeChildState("") = csBlank Then
+
+        Debug.Print _
+            "PASS  Blank Node ID = BLANK."
+
+    Else
+
+        Debug.Print _
+            "FAIL  Blank Node ID should be BLANK."
+
+    End If
+
+    Debug.Print String(70, "=")
+
+End Sub
+
