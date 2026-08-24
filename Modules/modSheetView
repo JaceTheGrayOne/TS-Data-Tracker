@@ -1,0 +1,257 @@
+Option Explicit
+
+
+'============================================================
+' CONFIGURATION
+'============================================================
+
+Private Const TARGET_SHEET As String = "TS Data"
+
+Private Const CMD_NEW_VIEW As String = "NewSheetView"
+Private Const CMD_EXIT_VIEW As String = "ExitSheetView"
+
+
+'============================================================
+' TEST HARNESS
+'============================================================
+
+Public Sub TestPrivateSheetViewCapability()
+
+    Dim ws As Worksheet
+
+    Dim newViewEnabled As Boolean
+    Dim exitViewEnabledBefore As Boolean
+    Dim exitViewEnabledAfter As Boolean
+
+    On Error GoTo TestFailed
+
+    Set ws = _
+        ThisWorkbook.Worksheets( _
+            TARGET_SHEET)
+
+    ws.Activate
+
+    DoEvents
+
+    newViewEnabled = _
+        Application.CommandBars.GetEnabledMso( _
+            CMD_NEW_VIEW)
+
+    ' Exit command enabled-state is used to detect an active Sheet View.
+    exitViewEnabledBefore = _
+        Application.CommandBars.GetEnabledMso( _
+            CMD_EXIT_VIEW)
+
+    If exitViewEnabledBefore Then
+
+        MsgBox _
+            "TEST NOT RUN" & _
+            vbCrLf & vbCrLf & _
+            "Excel reports that a Sheet View is already active." & _
+            vbCrLf & vbCrLf & _
+            "Exit the current Sheet View and run this test again.", _
+            vbInformation, _
+            "Private Sheet View Test"
+
+        Exit Sub
+
+    End If
+
+    If Not newViewEnabled Then
+
+        MsgBox _
+            "FAIL" & _
+            vbCrLf & vbCrLf & _
+            "Excel reports that the built-in New Sheet View command " & _
+            "is not currently enabled." & _
+            vbCrLf & vbCrLf & _
+            "No filter was applied and no workbook data was changed.", _
+            vbExclamation, _
+            "Private Sheet View Test"
+
+        Exit Sub
+
+    End If
+
+    Application.CommandBars.ExecuteMso _
+        CMD_NEW_VIEW
+
+    DoEvents
+
+    exitViewEnabledAfter = _
+        Application.CommandBars.GetEnabledMso( _
+            CMD_EXIT_VIEW)
+
+    If exitViewEnabledAfter Then
+
+        MsgBox _
+            "PASS" & _
+            vbCrLf & vbCrLf & _
+            "VBA successfully invoked Excel's New Sheet View command." & _
+            vbCrLf & vbCrLf & _
+            "TS Data should now be in a Temporary View." & _
+            vbCrLf & _
+            "Confirm this under View > Sheet View.", _
+            vbInformation, _
+            "Private Sheet View Test"
+
+    Else
+
+        MsgBox _
+            "FAIL" & _
+            vbCrLf & vbCrLf & _
+            "The New Sheet View command was enabled and VBA invoked it, " & _
+            "but Excel does not report Exit Sheet View as enabled afterward." & _
+            vbCrLf & vbCrLf & _
+            "No search/filter implementation should be built around this " & _
+            "until we determine why.", _
+            vbExclamation, _
+            "Private Sheet View Test"
+
+    End If
+
+    Exit Sub
+
+
+TestFailed:
+
+    MsgBox _
+        "ERROR" & _
+        vbCrLf & vbCrLf & _
+        "Error " & CStr(Err.Number) & _
+        vbCrLf & _
+        Err.Description, _
+        vbCritical, _
+        "Private Sheet View Test"
+
+End Sub
+
+
+Public Sub ExitPrivateSheetViewTest()
+
+    On Error GoTo ExitFailed
+
+    If Application.CommandBars.GetEnabledMso( _
+            CMD_EXIT_VIEW) Then
+
+        Application.CommandBars.ExecuteMso _
+            CMD_EXIT_VIEW
+
+        DoEvents
+
+        MsgBox _
+            "The active Sheet View has been exited.", _
+            vbInformation, _
+            "Private Sheet View Test"
+
+    Else
+
+        MsgBox _
+            "Excel does not report an active Sheet View.", _
+            vbInformation, _
+            "Private Sheet View Test"
+
+    End If
+
+    Exit Sub
+
+
+ExitFailed:
+
+    MsgBox _
+        "Unable to exit the Sheet View." & _
+        vbCrLf & vbCrLf & _
+        "Error " & CStr(Err.Number) & _
+        vbCrLf & _
+        Err.Description, _
+        vbCritical, _
+        "Private Sheet View Test"
+
+End Sub
+
+
+Public Sub TestSilentExitTemporarySheetView()
+
+    Dim errorNumber As Long
+    Dim errorDescription As String
+
+    On Error GoTo TestFailed
+
+    If Not Application.CommandBars.GetEnabledMso( _
+            CMD_EXIT_VIEW) Then
+
+        MsgBox _
+            "TEST NOT RUN" & _
+            vbCrLf & vbCrLf & _
+            "Excel does not currently report an active Sheet View.", _
+            vbInformation, _
+            "Silent Sheet View Exit Test"
+
+        Exit Sub
+
+    End If
+
+    ' Alt+N selects "Don't Keep" in the Sheet View confirmation.
+    ' Queue it before ExecuteMso so it remains pending for the modal dialog.
+    Application.SendKeys _
+        "%n", _
+        False
+
+    Application.CommandBars.ExecuteMso _
+        CMD_EXIT_VIEW
+
+    DoEvents
+
+    If Application.CommandBars.GetEnabledMso( _
+            CMD_EXIT_VIEW) Then
+
+        MsgBox _
+            "FAIL" & _
+            vbCrLf & vbCrLf & _
+            "Excel still reports a Sheet View as active.", _
+            vbExclamation, _
+            "Silent Sheet View Exit Test"
+
+    Else
+
+        MsgBox _
+            "PASS" & _
+            vbCrLf & vbCrLf & _
+            "Excel exited the Temporary View and returned to Default." & _
+            vbCrLf & vbCrLf & _
+            "Verify:" & _
+            vbCrLf & _
+            "1. No Keep This View prompt remained onscreen." & _
+            vbCrLf & _
+            "2. The eye icon is gone." & _
+            vbCrLf & _
+            "3. View > Sheet View shows Default." & _
+            vbCrLf & _
+            "4. No new named Sheet View was created.", _
+            vbInformation, _
+            "Silent Sheet View Exit Test"
+
+    End If
+
+    Exit Sub
+
+
+TestFailed:
+
+    errorNumber = _
+        Err.Number
+
+    errorDescription = _
+        Err.Description
+
+    MsgBox _
+        "ERROR" & _
+        vbCrLf & vbCrLf & _
+        "Error " & CStr(errorNumber) & _
+        vbCrLf & _
+        errorDescription, _
+        vbCritical, _
+        "Silent Sheet View Exit Test"
+
+End Sub
+
