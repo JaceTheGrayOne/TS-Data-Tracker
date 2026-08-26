@@ -18,7 +18,7 @@ Private mSortOrder As Long
 '============================================================
 
 Public Sub Initialize( _
-    ByVal testName As String, _
+    ByVal TestName As String, _
     ByVal NodeID As String, _
     ByVal ParentID As String, _
     ByVal labelText As String, _
@@ -27,7 +27,7 @@ Public Sub Initialize( _
 )
 
     mTest = _
-        testName
+        TestName
 
     mNodeID = _
         NodeID
