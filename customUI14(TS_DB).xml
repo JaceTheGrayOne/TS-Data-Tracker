@@ -138,6 +138,22 @@
 
 
                 <group
+                    id="grpRelatedRecords"
+                    label="Related Records">
+
+                    <button
+                        id="btnFindSimilarIncidents"
+                        label="Find Similar"
+                        imageMso="FindDialog"
+                        size="normal"
+                        screentip="Find related troubleshooting records"
+                        supertip="Ranks prior records against the selected TS Data row and explains the criteria contributing to each match."
+                        onAction="Ribbon_FindSimilarIncidents"/>
+
+                </group>
+
+
+                <group
                     id="grpNavigation"
                     label="Navigation">
 
