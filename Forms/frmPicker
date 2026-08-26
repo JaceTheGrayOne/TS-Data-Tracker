@@ -46,7 +46,7 @@ Public Sub LoadPicker( _
     ' Clear search without triggering intermediate rebuild.
     mSuppressSearchChange = True
 
-    txtSearch.Value = _
+    txtSearch.value = _
         vbNullString
 
     mSuppressSearchChange = False
@@ -79,11 +79,11 @@ Public Sub CommitValue( _
     If mTargetIDColumn > 0 Then
         mTarget.Worksheet.Cells( _
             mTarget.Row, _
-            mTargetIDColumn).Value = _
+            mTargetIDColumn).value = _
                 selectedKey
     End If
 
-    mTarget.Value = _
+    mTarget.value = _
         selectedValue
 
     ApplyThemeToCell _
@@ -305,7 +305,7 @@ End Sub
 
 
 Private Sub fraItems_MouseMove( _
-    ByVal Button As Integer, _
+    ByVal button As Integer, _
     ByVal Shift As Integer, _
     ByVal X As Single, _
     ByVal Y As Single _
@@ -408,7 +408,7 @@ Private Sub BuildItems()
         New Collection
 
     searchText = _
-        Trim$(txtSearch.Value)
+        Trim$(txtSearch.value)
 
     If Not mTarget Is Nothing Then
         currentValue = _
@@ -1189,7 +1189,7 @@ End Sub
 Private Sub UpdateSearchHint()
 
     lblSearchHint.Visible = _
-        (Len(txtSearch.Value) = 0)
+        (Len(txtSearch.value) = 0)
 
 End Sub
 
