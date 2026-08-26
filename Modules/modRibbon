@@ -48,7 +48,7 @@ Public Sub Ribbon_RecordSearchChanged( _
         Exit Sub
     End If
 
-    RefreshRecordSearchRibbon
+    InvalidateClearRecordSearchControl
 
     Exit Sub
 
@@ -72,8 +72,23 @@ Public Sub Ribbon_RecordSearchGetText( _
     ByRef returnedVal _
 )
 
-    returnedVal = _
+    Dim currentQuery As String
+
+    currentQuery = _
         RecordSearchCurrentQuery()
+
+    ' Return an explicit zero-length string so the editBox receives a displayable empty value.
+    If Len(currentQuery) = 0 Then
+
+        returnedVal = _
+            ""
+
+    Else
+
+        returnedVal = _
+            currentQuery
+
+    End If
 
 End Sub
 
@@ -88,7 +103,9 @@ Public Sub Ribbon_ClearRecordSearch( _
 
     ClearRecordSearch
 
-    RefreshRecordSearchRibbon
+    InvalidateRecordSearchTextControl
+
+    InvalidatePresetFilterControls
 
     Exit Sub
 
@@ -229,6 +246,18 @@ Public Sub Ribbon_TestFilterGetPressed( _
 
 End Sub
 
+'============================================================
+' RELATED RECORD CALLBACKS
+'============================================================
+
+Public Sub Ribbon_FindSimilarIncidents( _
+    ByVal control As Office.IRibbonControl _
+)
+
+    ShowSimilarIncidentsForSelection
+
+End Sub
+
 
 '============================================================
 ' NAVIGATION / DEBUG CALLBACKS
@@ -352,6 +381,30 @@ Public Sub RefreshRecordSearchRibbon()
     mRibbon.Invalidate
 
     DoEvents
+
+End Sub
+
+
+Private Sub InvalidateRecordSearchTextControl()
+
+    If mRibbon Is Nothing Then
+        Exit Sub
+    End If
+
+    mRibbon.InvalidateControl _
+        "txtRecordSearch"
+
+End Sub
+
+
+Private Sub InvalidateClearRecordSearchControl()
+
+    If mRibbon Is Nothing Then
+        Exit Sub
+    End If
+
+    mRibbon.InvalidateControl _
+        "btnClearRecordSearch"
 
 End Sub
 
