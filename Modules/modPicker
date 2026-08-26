@@ -17,7 +17,7 @@ Public Sub OpenPickerForCell( _
 
     Dim parentValue As String
     Dim parentNodeID As String
-    Dim testName As String
+    Dim TestName As String
 
     Dim parentIDColumn As Long
     Dim targetIDColumn As Long
@@ -80,13 +80,13 @@ Public Sub OpenPickerForCell( _
             fieldName = _
                 "Test Step"
 
-            testName = _
+            TestName = _
                 Trim$(CStr( _
                     targetCell.Worksheet.Cells( _
                         targetCell.Row, _
                         4).value2))
 
-            If Len(testName) = 0 Then
+            If Len(TestName) = 0 Then
                 Exit Sub
             End If
 
@@ -94,7 +94,7 @@ Public Sub OpenPickerForCell( _
             ' tests not yet migrated to tbl_TestHierarchy.
             Set roots = _
                 GetRootNodes( _
-                    testName)
+                    TestName)
 
             If roots.Count > 0 Then
 
@@ -110,7 +110,7 @@ Public Sub OpenPickerForCell( _
                 Set values = _
                     GetRoutedValues( _
                         "Test", _
-                        testName, _
+                        TestName, _
                         fieldName)
 
                 targetIDColumn = _
