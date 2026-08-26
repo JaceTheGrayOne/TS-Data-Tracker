@@ -23,7 +23,7 @@ Public Function TryGetTheme( _
 ) As Boolean
 
     Dim tbl As ListObject
-    Dim rw As ListRow
+    Dim rw As listRow
 
     Dim colField As Long
     Dim colMatchType As Long
@@ -216,7 +216,7 @@ Public Function TryGetTheme( _
                     CBool( _
                         rw.Range.Cells( _
                             1, _
-                            colBold).Value)
+                            colBold).value)
 
                 TryGetTheme = _
                     True
@@ -263,14 +263,8 @@ Public Sub ApplyThemeToCell( _
             textColor, _
             isBold) Then
 
-        targetCell.Interior.Pattern = _
-            xlSolid
-
-        targetCell.Interior.Color = _
-            fillColor
-
         targetCell.Font.Color = _
-            textColor
+            fillColor
 
         targetCell.Font.Bold = _
             isBold
@@ -287,8 +281,8 @@ Public Sub ResetCellTheme( _
     targetCell.Interior.Pattern = _
         xlNone
 
-    targetCell.Font.ColorIndex = _
-        xlColorIndexAutomatic
+    targetCell.Font.Color = _
+        UIColor_ItemText()
 
     targetCell.Font.Bold = _
         False
