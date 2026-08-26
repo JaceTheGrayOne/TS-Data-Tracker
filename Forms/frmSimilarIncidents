@@ -1,0 +1,930 @@
+Option Explicit
+
+
+'============================================================
+' FORM GEOMETRY
+'============================================================
+
+Private Const FORM_WIDTH As Single = 820
+Private Const FORM_HEIGHT As Single = 560
+
+Private Const FORM_MARGIN As Single = 12
+Private Const SECTION_GAP As Single = 12
+
+Private Const TITLE_TOP As Single = 10
+Private Const TITLE_HEIGHT As Single = 20
+
+Private Const SOURCE_LABEL_TOP As Single = 38
+Private Const SOURCE_TEXT_TOP As Single = 54
+Private Const SOURCE_TEXT_HEIGHT As Single = 74
+
+Private Const CONTENT_LABEL_TOP As Single = 140
+Private Const CONTENT_TOP As Single = 158
+Private Const CONTENT_HEIGHT As Single = 316
+
+Private Const RESULT_LIST_WIDTH As Single = 390
+
+Private Const RESULT_HEADER_HEIGHT As Single = 16
+Private Const RESULT_HEADER_GAP As Single = 2
+
+Private Const RESULT_SCORE_COLUMN_WIDTH As Single = 44
+Private Const RESULT_ROW_COLUMN_WIDTH As Single = 38
+Private Const RESULT_UUT_COLUMN_WIDTH As Single = 52
+Private Const RESULT_TEST_COLUMN_WIDTH As Single = 102
+Private Const RESULT_SUMMARY_COLUMN_WIDTH As Single = 146
+
+Private Const BUTTON_TOP As Single = 492
+Private Const BUTTON_WIDTH As Single = 92
+Private Const BUTTON_HEIGHT As Single = 26
+Private Const BUTTON_GAP As Single = 8
+
+
+'============================================================
+' CONTROL REFERENCES
+'============================================================
+
+Private mTitleLabel As MSForms.Label
+Private mSourceLabel As MSForms.Label
+Private mResultsLabel As MSForms.Label
+Private mPreviewLabel As MSForms.Label
+Private mStatusLabel As MSForms.Label
+
+Private mSourceText As MSForms.TextBox
+Private mPreviewText As MSForms.TextBox
+
+Private WithEvents mResultsList As MSForms.ListBox
+Private WithEvents mRefreshButton As MSForms.CommandButton
+Private WithEvents mOpenButton As MSForms.CommandButton
+Private WithEvents mCloseButton As MSForms.CommandButton
+
+
+'============================================================
+' MODULE STATE
+'============================================================
+
+Private mSourceCell As Range
+Private mMatches As Collection
+
+Private mSourceCriteriaCount As Long
+Private mRecordsEvaluated As Long
+Private mLoadingResults As Boolean
+
+
+'============================================================
+' PUBLIC INTERFACE
+'============================================================
+
+Public Function LoadForSelection( _
+    ByVal sourceCell As Range _
+) As Boolean
+
+    Dim sourceSummary As String
+
+    Dim errorNumber As Long
+    Dim errorDescription As String
+
+    On Error GoTo LoadFailed
+
+    Set mSourceCell = sourceCell
+
+    Set mMatches = _
+        FindSimilarIncidents( _
+            mSourceCell, _
+            sourceSummary, _
+            mSourceCriteriaCount, _
+            mRecordsEvaluated)
+
+    mSourceText.value = sourceSummary
+
+    PopulateIncidentResults
+
+    LoadForSelection = True
+
+    Exit Function
+
+
+LoadFailed:
+
+    errorNumber = Err.Number
+    errorDescription = Err.Description
+
+    Set mMatches = Nothing
+
+    mSourceText.value = vbNullString
+    mResultsList.Clear
+    mPreviewText.value = _
+        "No similarity results are available for the selected row."
+    mStatusLabel.Caption = vbNullString
+    mOpenButton.Enabled = False
+
+    MsgBox _
+        "Similar incidents could not be evaluated." & _
+        vbCrLf & vbCrLf & _
+        "Error " & CStr(errorNumber) & _
+        vbCrLf & _
+        errorDescription, _
+        vbCritical, _
+        "Similar Incidents"
+
+End Function
+
+
+'============================================================
+' USERFORM LIFECYCLE
+'============================================================
+
+Private Sub UserForm_Initialize()
+
+    Me.Caption = UI_APP_CAPTION
+    Me.BackColor = UIColor_FormBackground()
+
+    Me.Width = FORM_WIDTH
+    Me.Height = FORM_HEIGHT
+    Me.StartUpPosition = 1
+
+    BuildSimilarIncidentInterface
+
+End Sub
+
+
+Private Sub UserForm_Activate()
+
+    If mResultsList.ListCount > 0 Then
+        mResultsList.SetFocus
+    End If
+
+End Sub
+
+
+'============================================================
+' CONTROL EVENTS
+'============================================================
+
+Private Sub mResultsList_Change()
+
+    If mLoadingResults Then
+        Exit Sub
+    End If
+
+    UpdateSelectedIncidentPreview
+
+End Sub
+
+
+Private Sub mRefreshButton_Click()
+
+    Dim sourceCell As Range
+    Dim failureReason As String
+
+    If Not TryResolveSimilarIncidentSource( _
+            ActiveCell, _
+            sourceCell, _
+            failureReason) Then
+
+        MsgBox _
+            failureReason, _
+            vbInformation, _
+            "Similar Incidents"
+
+        Exit Sub
+
+    End If
+
+    LoadForSelection sourceCell
+
+End Sub
+
+
+Private Sub mOpenButton_Click()
+
+    Dim selectedMatch As clsIncidentMatch
+
+    Set selectedMatch = SelectedIncidentMatch()
+
+    If selectedMatch Is Nothing Then
+        Exit Sub
+    End If
+
+    OpenSimilarIncidentRow selectedMatch.worksheetRow
+
+End Sub
+
+
+Private Sub mCloseButton_Click()
+
+    Unload Me
+
+End Sub
+
+
+'============================================================
+' INTERFACE CONSTRUCTION
+'============================================================
+
+Private Sub BuildSimilarIncidentInterface()
+
+    Dim contentWidth As Single
+    Dim previewLeft As Single
+    Dim previewWidth As Single
+
+    Dim closeLeft As Single
+    Dim openLeft As Single
+    Dim refreshLeft As Single
+
+    Dim headerLeft As Single
+    Dim headerLabel As MSForms.Label
+
+    contentWidth = _
+        Me.InsideWidth - _
+        (FORM_MARGIN * 2)
+
+    previewLeft = _
+        FORM_MARGIN + _
+        RESULT_LIST_WIDTH + _
+        SECTION_GAP
+
+    previewWidth = _
+        contentWidth - _
+        RESULT_LIST_WIDTH - _
+        SECTION_GAP
+
+    closeLeft = _
+        Me.InsideWidth - _
+        FORM_MARGIN - _
+        BUTTON_WIDTH
+
+    openLeft = _
+        closeLeft - _
+        BUTTON_GAP - _
+        BUTTON_WIDTH
+
+    refreshLeft = _
+        openLeft - _
+        BUTTON_GAP - _
+        BUTTON_WIDTH
+
+    '----------------------------------------------------
+    ' TITLE
+    '----------------------------------------------------
+    Set mTitleLabel = _
+        CreateSimilarIncidentLabel( _
+            "lblSimilarTitle", _
+            "SIMILAR INCIDENTS", _
+            FORM_MARGIN, _
+            TITLE_TOP, _
+            contentWidth, _
+            TITLE_HEIGHT)
+
+    With mTitleLabel
+        .ForeColor = UIColor_TextPrimary()
+        .Font.Size = UI_TITLE_FONT_SIZE
+        .Font.Bold = True
+    End With
+
+    '----------------------------------------------------
+    ' SOURCE RECORD
+    '----------------------------------------------------
+    Set mSourceLabel = _
+        CreateSimilarIncidentLabel( _
+            "lblSimilarSource", _
+            "CURRENT INCIDENT", _
+            FORM_MARGIN, _
+            SOURCE_LABEL_TOP, _
+            contentWidth, _
+            14)
+
+    StyleSimilarIncidentSectionLabel mSourceLabel
+
+    Set mSourceText = _
+        CreateSimilarIncidentTextBox( _
+            "txtSimilarSource", _
+            FORM_MARGIN, _
+            SOURCE_TEXT_TOP, _
+            contentWidth, _
+            SOURCE_TEXT_HEIGHT)
+
+    StyleSimilarIncidentReadOnlyTextBox mSourceText
+
+    '----------------------------------------------------
+    ' RESULT LIST
+    '----------------------------------------------------
+    Set mResultsLabel = _
+        CreateSimilarIncidentLabel( _
+            "lblSimilarResults", _
+            "MATCHES", _
+            FORM_MARGIN, _
+            CONTENT_LABEL_TOP, _
+            RESULT_LIST_WIDTH, _
+            14)
+
+    StyleSimilarIncidentSectionLabel mResultsLabel
+
+    headerLeft = _
+        FORM_MARGIN
+
+    Set headerLabel = _
+        CreateSimilarIncidentLabel( _
+            "lblSimilarScoreHeader", _
+            "SCORE", _
+            headerLeft, _
+            CONTENT_TOP, _
+            RESULT_SCORE_COLUMN_WIDTH, _
+            RESULT_HEADER_HEIGHT)
+
+    StyleSimilarIncidentColumnHeader headerLabel
+
+    headerLeft = _
+        headerLeft + _
+        RESULT_SCORE_COLUMN_WIDTH
+
+    Set headerLabel = _
+        CreateSimilarIncidentLabel( _
+            "lblSimilarRowHeader", _
+            "ROW", _
+            headerLeft, _
+            CONTENT_TOP, _
+            RESULT_ROW_COLUMN_WIDTH, _
+            RESULT_HEADER_HEIGHT)
+
+    StyleSimilarIncidentColumnHeader headerLabel
+
+    headerLeft = _
+        headerLeft + _
+        RESULT_ROW_COLUMN_WIDTH
+
+    Set headerLabel = _
+        CreateSimilarIncidentLabel( _
+            "lblSimilarUUTHeader", _
+            "UUT", _
+            headerLeft, _
+            CONTENT_TOP, _
+            RESULT_UUT_COLUMN_WIDTH, _
+            RESULT_HEADER_HEIGHT)
+
+    StyleSimilarIncidentColumnHeader headerLabel
+
+    headerLeft = _
+        headerLeft + _
+        RESULT_UUT_COLUMN_WIDTH
+
+    Set headerLabel = _
+        CreateSimilarIncidentLabel( _
+            "lblSimilarTestHeader", _
+            "TEST", _
+            headerLeft, _
+            CONTENT_TOP, _
+            RESULT_TEST_COLUMN_WIDTH, _
+            RESULT_HEADER_HEIGHT)
+
+    StyleSimilarIncidentColumnHeader headerLabel
+
+    headerLeft = _
+        headerLeft + _
+        RESULT_TEST_COLUMN_WIDTH
+
+    Set headerLabel = _
+        CreateSimilarIncidentLabel( _
+            "lblSimilarSummaryHeader", _
+            "FAULT / PATH", _
+            headerLeft, _
+            CONTENT_TOP, _
+            RESULT_SUMMARY_COLUMN_WIDTH, _
+            RESULT_HEADER_HEIGHT)
+
+    StyleSimilarIncidentColumnHeader headerLabel
+
+    Set mResultsList = _
+        Me.Controls.Add( _
+            "Forms.ListBox.1", _
+            "lstSimilarResults", _
+            True)
+
+    With mResultsList
+        .Left = FORM_MARGIN
+        .Top = _
+            CONTENT_TOP + _
+            RESULT_HEADER_HEIGHT + _
+            RESULT_HEADER_GAP
+
+        .Width = RESULT_LIST_WIDTH
+        .Height = _
+            CONTENT_HEIGHT - _
+            RESULT_HEADER_HEIGHT - _
+            RESULT_HEADER_GAP
+
+        .BackColor = UIColor_InputBackground()
+        .ForeColor = UIColor_TextPrimary()
+        .BorderStyle = fmBorderStyleSingle
+
+        .Font.Name = UI_FONT
+        .Font.Size = UI_ITEM_FONT_SIZE
+
+        .ColumnCount = 6
+        .ColumnWidths = _
+            "0 pt;" & _
+            CStr(RESULT_SCORE_COLUMN_WIDTH) & _
+            " pt;" & _
+            CStr(RESULT_ROW_COLUMN_WIDTH) & _
+            " pt;" & _
+            CStr(RESULT_UUT_COLUMN_WIDTH) & _
+            " pt;" & _
+            CStr(RESULT_TEST_COLUMN_WIDTH) & _
+            " pt;" & _
+            CStr(RESULT_SUMMARY_COLUMN_WIDTH) & _
+            " pt"
+
+        .MultiSelect = fmMultiSelectSingle
+        .ListStyle = fmListStylePlain
+        .ControlTipText = _
+            "Select a historical record to review its match explanation."
+    End With
+
+    '----------------------------------------------------
+    ' PREVIEW
+    '----------------------------------------------------
+    Set mPreviewLabel = _
+        CreateSimilarIncidentLabel( _
+            "lblSimilarPreview", _
+            "SELECTED RECORD", _
+            previewLeft, _
+            CONTENT_LABEL_TOP, _
+            previewWidth, _
+            14)
+
+    StyleSimilarIncidentSectionLabel mPreviewLabel
+
+    Set mPreviewText = _
+        CreateSimilarIncidentTextBox( _
+            "txtSimilarPreview", _
+            previewLeft, _
+            CONTENT_TOP, _
+            previewWidth, _
+            CONTENT_HEIGHT)
+
+    StyleSimilarIncidentReadOnlyTextBox mPreviewText
+
+    '----------------------------------------------------
+    ' STATUS
+    '----------------------------------------------------
+    Set mStatusLabel = _
+        CreateSimilarIncidentLabel( _
+            "lblSimilarStatus", _
+            vbNullString, _
+            FORM_MARGIN, _
+            BUTTON_TOP + 4, _
+            refreshLeft - _
+                FORM_MARGIN - _
+                BUTTON_GAP, _
+            18)
+
+    With mStatusLabel
+        .ForeColor = UIColor_TextMuted()
+        .Font.Size = UI_PATH_FONT_SIZE
+        .Font.Bold = False
+    End With
+
+    '----------------------------------------------------
+    ' COMMANDS
+    '----------------------------------------------------
+    Set mRefreshButton = _
+        CreateSimilarIncidentButton( _
+            "cmdSimilarRefresh", _
+            "Refresh", _
+            refreshLeft, _
+            BUTTON_TOP)
+
+    Set mOpenButton = _
+        CreateSimilarIncidentButton( _
+            "cmdSimilarOpen", _
+            "Open Record", _
+            openLeft, _
+            BUTTON_TOP)
+
+    Set mCloseButton = _
+        CreateSimilarIncidentButton( _
+            "cmdSimilarClose", _
+            "Close", _
+            closeLeft, _
+            BUTTON_TOP)
+
+    mRefreshButton.ControlTipText = _
+        "Recalculate matches from the currently selected TS Data row."
+
+    mOpenButton.ControlTipText = _
+        "Open the selected historical record on TS Data."
+
+    mCloseButton.ControlTipText = _
+        "Close Similar Incidents."
+
+    mOpenButton.Enabled = False
+    mOpenButton.Default = True
+    mCloseButton.Cancel = True
+
+    mPreviewText.value = _
+        "Select a ranked record to review why it matched."
+
+End Sub
+
+
+Private Function CreateSimilarIncidentLabel( _
+    ByVal controlName As String, _
+    ByVal captionText As String, _
+    ByVal leftPosition As Single, _
+    ByVal topPosition As Single, _
+    ByVal controlWidth As Single, _
+    ByVal controlHeight As Single _
+) As MSForms.Label
+
+    Dim lbl As MSForms.Label
+
+    Set lbl = _
+        Me.Controls.Add( _
+            "Forms.Label.1", _
+            controlName, _
+            True)
+
+    With lbl
+        .Caption = captionText
+        .Left = leftPosition
+        .Top = topPosition
+        .Width = controlWidth
+        .Height = controlHeight
+        .BackStyle = fmBackStyleTransparent
+        .Font.Name = UI_FONT
+        .Font.Size = UI_ITEM_FONT_SIZE
+    End With
+
+    Set CreateSimilarIncidentLabel = lbl
+
+End Function
+
+
+Private Function CreateSimilarIncidentTextBox( _
+    ByVal controlName As String, _
+    ByVal leftPosition As Single, _
+    ByVal topPosition As Single, _
+    ByVal controlWidth As Single, _
+    ByVal controlHeight As Single _
+) As MSForms.TextBox
+
+    Dim txt As MSForms.TextBox
+
+    Set txt = _
+        Me.Controls.Add( _
+            "Forms.TextBox.1", _
+            controlName, _
+            True)
+
+    With txt
+        .Left = leftPosition
+        .Top = topPosition
+        .Width = controlWidth
+        .Height = controlHeight
+        .Multiline = True
+        .WordWrap = True
+        .ScrollBars = fmScrollBarsVertical
+        .Locked = True
+        .TabStop = False
+    End With
+
+    Set CreateSimilarIncidentTextBox = txt
+
+End Function
+
+
+Private Function CreateSimilarIncidentButton( _
+    ByVal controlName As String, _
+    ByVal captionText As String, _
+    ByVal leftPosition As Single, _
+    ByVal topPosition As Single _
+) As MSForms.CommandButton
+
+    Dim button As MSForms.CommandButton
+
+    Set button = _
+        Me.Controls.Add( _
+            "Forms.CommandButton.1", _
+            controlName, _
+            True)
+
+    With button
+        .Caption = captionText
+        .Left = leftPosition
+        .Top = topPosition
+        .Width = BUTTON_WIDTH
+        .Height = BUTTON_HEIGHT
+        .BackColor = UIColor_ButtonBackground()
+        .ForeColor = UIColor_ButtonText()
+        .Font.Name = UI_FONT
+        .Font.Size = UI_BUTTON_FONT_SIZE
+        .Font.Bold = False
+    End With
+
+    Set CreateSimilarIncidentButton = button
+
+End Function
+
+
+Private Sub StyleSimilarIncidentSectionLabel( _
+    ByVal lbl As MSForms.Label _
+)
+
+    With lbl
+        .ForeColor = UIColor_TextMuted()
+        .Font.Size = UI_PATH_FONT_SIZE
+        .Font.Bold = True
+    End With
+
+End Sub
+
+
+Private Sub StyleSimilarIncidentColumnHeader( _
+    ByVal lbl As MSForms.Label _
+)
+
+    With lbl
+        .BackStyle = fmBackStyleOpaque
+        .BackColor = UIColor_PanelBackground()
+        .ForeColor = UIColor_TextMuted()
+        .BorderStyle = fmBorderStyleSingle
+        .BorderColor = UIColor_InputBorder()
+        .Font.Size = UI_PATH_FONT_SIZE
+        .Font.Bold = True
+        .TextAlign = fmTextAlignCenter
+    End With
+
+End Sub
+
+
+Private Sub StyleSimilarIncidentReadOnlyTextBox( _
+    ByVal txt As MSForms.TextBox _
+)
+
+    With txt
+        .BackColor = UIColor_PanelBackground()
+        .ForeColor = UIColor_TextPrimary()
+        .BorderStyle = fmBorderStyleSingle
+        .BorderColor = UIColor_InputBorder()
+        .Font.Name = UI_FONT
+        .Font.Size = UI_ITEM_FONT_SIZE
+    End With
+
+End Sub
+
+
+'============================================================
+' RESULT DISPLAY
+'============================================================
+
+Private Sub PopulateIncidentResults()
+
+    Dim match As clsIncidentMatch
+    Dim matchIndex As Long
+    Dim listRow As Long
+
+    mLoadingResults = True
+
+    mResultsList.Clear
+    mPreviewText.value = vbNullString
+    mOpenButton.Enabled = False
+
+    If mMatches Is Nothing Then
+
+        mStatusLabel.Caption = "No matches are available."
+        mPreviewText.value = _
+            "No records were returned by the matching engine."
+
+        mLoadingResults = False
+
+        Exit Sub
+
+    End If
+
+    For matchIndex = 1 To mMatches.Count
+
+        Set match = mMatches(matchIndex)
+
+        mResultsList.AddItem CStr(matchIndex)
+
+        listRow = mResultsList.ListCount - 1
+
+        mResultsList.List(listRow, 1) = CStr(match.Score) & "%"
+        mResultsList.List(listRow, 2) = CStr(match.worksheetRow)
+        mResultsList.List(listRow, 3) = match.UUT
+        mResultsList.List(listRow, 4) = match.TestName
+        mResultsList.List(listRow, 5) = IncidentListSummary(match)
+
+    Next matchIndex
+
+    mStatusLabel.Caption = _
+        vbNullString
+
+    If mMatches.Count = 0 Then
+
+        mPreviewText.value = _
+            "No records met the minimum similarity threshold."
+
+    Else
+
+        mResultsList.ListIndex = 0
+
+    End If
+
+    mLoadingResults = False
+
+    UpdateSelectedIncidentPreview
+
+End Sub
+
+
+Private Sub UpdateSelectedIncidentPreview()
+
+    Dim selectedMatch As clsIncidentMatch
+
+    Set selectedMatch = SelectedIncidentMatch()
+
+    If selectedMatch Is Nothing Then
+
+        mOpenButton.Enabled = False
+
+        If mResultsList.ListCount > 0 Then
+
+            mPreviewText.value = _
+                "Select a ranked record to review why it matched."
+
+        End If
+
+        Exit Sub
+
+    End If
+
+    mOpenButton.Enabled = True
+    mPreviewText.value = BuildIncidentPreview(selectedMatch)
+
+End Sub
+
+
+Private Function SelectedIncidentMatch() As clsIncidentMatch
+
+    Dim matchIndex As Long
+
+    If mMatches Is Nothing Then
+        Exit Function
+    End If
+
+    If mResultsList.ListIndex < 0 Then
+        Exit Function
+    End If
+
+    matchIndex = _
+        CLng( _
+            mResultsList.List( _
+                mResultsList.ListIndex, _
+                0))
+
+    If matchIndex < 1 _
+        Or matchIndex > mMatches.Count Then
+
+        Exit Function
+
+    End If
+
+    Set SelectedIncidentMatch = mMatches(matchIndex)
+
+End Function
+
+
+Private Function IncidentListSummary( _
+    ByVal match As clsIncidentMatch _
+) As String
+
+    If Len(match.FaultText) > 0 Then
+
+        IncidentListSummary = match.FaultText
+
+    ElseIf Len(match.TestPath) > 0 Then
+
+        IncidentListSummary = match.TestPath
+
+    Else
+
+        IncidentListSummary = "No fault summary"
+
+    End If
+
+End Function
+
+
+Private Function BuildIncidentPreview( _
+    ByVal match As clsIncidentMatch _
+) As String
+
+    Dim previewText As String
+
+    AppendPreviewLine _
+        previewText, _
+        match.MatchLevel & _
+        "    " & _
+        CStr(match.Score) & _
+        "%"
+
+    AppendPreviewSection previewText, "WHY THIS MATCHED"
+    AppendPreviewLine previewText, DisplayPreviewValue(match.reasonsText)
+
+    AppendPreviewSection previewText, "RECORD"
+
+    AppendPreviewLine _
+        previewText, _
+        "Worksheet Row: " & _
+        CStr(match.worksheetRow)
+
+    AppendPreviewField previewText, "Date", match.DateText
+    AppendPreviewField previewText, "UUT", match.UUT
+    AppendPreviewField previewText, "SN", match.SerialNumber
+    AppendPreviewField previewText, "Test", match.TestName
+    AppendPreviewField previewText, "Path", match.TestPath
+
+    AppendPreviewSection previewText, "FAULT"
+    AppendPreviewLine previewText, DisplayPreviewValue(match.FaultText)
+
+    AppendPreviewSection previewText, "CAUSE"
+    AppendPreviewLine previewText, DisplayPreviewValue(match.CauseText)
+
+    AppendPreviewSection previewText, "RESOLUTION"
+    AppendPreviewLine previewText, DisplayPreviewValue(match.ResolutionText)
+
+    AppendPreviewSection previewText, "NOTES"
+    AppendPreviewLine previewText, DisplayPreviewValue(match.NotesText)
+
+    If Len(match.differencesText) > 0 Then
+
+        AppendPreviewSection previewText, "MATERIAL DIFFERENCES"
+        AppendPreviewLine previewText, match.differencesText
+
+    End If
+
+    BuildIncidentPreview = previewText
+
+End Function
+
+
+Private Sub AppendPreviewSection( _
+    ByRef previewText As String, _
+    ByVal sectionName As String _
+)
+
+    If Len(previewText) > 0 Then
+        previewText = previewText & vbCrLf & vbCrLf
+    End If
+
+    previewText = previewText & sectionName
+
+End Sub
+
+
+Private Sub AppendPreviewField( _
+    ByRef previewText As String, _
+    ByVal fieldName As String, _
+    ByVal fieldValue As String _
+)
+
+    AppendPreviewLine _
+        previewText, _
+        fieldName & _
+        ": " & _
+        DisplayPreviewValue(fieldValue)
+
+End Sub
+
+
+Private Sub AppendPreviewLine( _
+    ByRef previewText As String, _
+    ByVal lineText As String _
+)
+
+    If Len(previewText) > 0 Then
+        previewText = previewText & vbCrLf
+    End If
+
+    previewText = previewText & lineText
+
+End Sub
+
+
+Private Function DisplayPreviewValue( _
+    ByVal sourceText As String _
+) As String
+
+    If Len(Trim$(sourceText)) = 0 Then
+
+        DisplayPreviewValue = "(blank)"
+
+    Else
+
+        DisplayPreviewValue = sourceText
+
+    End If
+
+End Function
+
+
