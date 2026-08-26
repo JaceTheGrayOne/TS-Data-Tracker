@@ -1,0 +1,1688 @@
+Option Explicit
+
+
+'============================================================
+' CONFIGURATION
+'============================================================
+
+Private Const INCIDENT_SHEET_NAME As String = "TS Data"
+Private Const INCIDENT_TABLE_NAME As String = "lst_TS_Data"
+
+Private Const MAX_MATCH_RESULTS As Long = 25
+Private Const MIN_RESULT_SCORE As Long = 25
+Private Const MIN_SOURCE_CRITERIA As Long = 2
+
+Private Const WEIGHT_UUT As Long = 18
+Private Const WEIGHT_SERIAL_NUMBER As Long = 7
+Private Const WEIGHT_TEST As Long = 12
+Private Const WEIGHT_TEST_PATH As Long = 28
+Private Const WEIGHT_FAULT_EXACT As Long = 15
+Private Const WEIGHT_FAULT_TERMS As Long = 15
+Private Const WEIGHT_NOTES_TERMS As Long = 5
+
+
+'============================================================
+' INTERNAL TYPES
+'============================================================
+
+Private Type IncidentColumnMap
+    DateIndex As Long
+    UUTIndex As Long
+    SerialNumberIndex As Long
+    TestIndex As Long
+    PathStartIndex As Long
+    FaultIndex As Long
+    CauseIndex As Long
+    ResolutionIndex As Long
+    NotesIndex As Long
+End Type
+
+
+Private Type IncidentRecordData
+    worksheetRow As Long
+
+    DateText As String
+    UUT As String
+    SerialNumber As String
+    TestName As String
+
+    PathValues(1 To 5) As String
+    PathIDs(1 To 5) As String
+    TestPath As String
+
+    FaultText As String
+    CauseText As String
+    ResolutionText As String
+    NotesText As String
+End Type
+
+
+'============================================================
+' PUBLIC INTERFACE
+'============================================================
+
+Public Sub ShowSimilarIncidentsForSelection()
+
+    Dim sourceCell As Range
+    Dim failureReason As String
+
+    On Error GoTo ShowFailed
+
+    If ActiveWorkbook Is Nothing Then
+
+        MsgBox _
+            "No workbook is active.", _
+            vbInformation, _
+            "Similar Incidents"
+
+        Exit Sub
+
+    End If
+
+    If Not TryResolveSimilarIncidentSource( _
+            ActiveCell, _
+            sourceCell, _
+            failureReason) Then
+
+        MsgBox _
+            failureReason, _
+            vbInformation, _
+            "Similar Incidents"
+
+        Exit Sub
+
+    End If
+
+    Load frmSimilarIncidents
+
+    If Not frmSimilarIncidents.LoadForSelection(sourceCell) Then
+
+        Unload frmSimilarIncidents
+
+        Exit Sub
+
+    End If
+
+    frmSimilarIncidents.Show vbModeless
+
+    Exit Sub
+
+
+ShowFailed:
+
+    MsgBox _
+        "Similar Incidents could not be opened." & _
+        vbCrLf & vbCrLf & _
+        "Error " & CStr(Err.Number) & _
+        vbCrLf & _
+        Err.Description, _
+        vbCritical, _
+        "Similar Incidents"
+
+End Sub
+
+
+Public Function TryResolveSimilarIncidentSource( _
+    ByVal target As Range, _
+    ByRef sourceCell As Range, _
+    ByRef failureReason As String _
+) As Boolean
+
+    Dim ws As Worksheet
+    Dim dataTable As ListObject
+    Dim sourceRange As Range
+    Dim cell As Range
+
+    Dim firstDataRow As Long
+    Dim lastDataRow As Long
+    Dim rowHasContent As Boolean
+
+    Set sourceCell = Nothing
+    failureReason = vbNullString
+
+    If target Is Nothing Then
+
+        failureReason = _
+            "Select a troubleshooting record before running Similar Incidents."
+
+        Exit Function
+
+    End If
+
+    Set ws = target.Worksheet
+
+    If Not (ws.Parent Is ThisWorkbook) Then
+
+        failureReason = _
+            "Select a record in this troubleshooting workbook."
+
+        Exit Function
+
+    End If
+
+    If StrComp( _
+            ws.Name, _
+            INCIDENT_SHEET_NAME, _
+            vbTextCompare) <> 0 Then
+
+        failureReason = _
+            "Select a record on the TS Data worksheet."
+
+        Exit Function
+
+    End If
+
+    Set dataTable = ws.ListObjects(INCIDENT_TABLE_NAME)
+
+    firstDataRow = dataTable.HeaderRowRange.Row + 1
+    lastDataRow = GetLastIncidentDataRow(dataTable)
+
+    If target.Row < firstDataRow _
+        Or target.Row > lastDataRow Then
+
+        failureReason = _
+            "Select a populated troubleshooting record row."
+
+        Exit Function
+
+    End If
+
+    Set sourceRange = _
+        ws.Range( _
+            ws.Cells( _
+                target.Row, _
+                dataTable.Range.Column), _
+            ws.Cells( _
+                target.Row, _
+                dataTable.Range.Column + _
+                    dataTable.ListColumns.Count - 1))
+
+    For Each cell In sourceRange.Cells
+
+        If Not IsError(cell.value2) Then
+
+            If Len(Trim$(CStr(cell.value2))) > 0 Then
+
+                rowHasContent = True
+
+                Exit For
+
+            End If
+
+        End If
+
+    Next cell
+
+    If Not rowHasContent Then
+
+        failureReason = _
+            "Select a populated troubleshooting record row."
+
+        Exit Function
+
+    End If
+
+    Set sourceCell = _
+        ws.Cells( _
+            target.Row, _
+            dataTable.Range.Column)
+
+    TryResolveSimilarIncidentSource = True
+
+End Function
+
+
+Public Function FindSimilarIncidents( _
+    ByVal sourceCell As Range, _
+    ByRef sourceSummary As String, _
+    ByRef sourceCriteriaCount As Long, _
+    ByRef recordsEvaluated As Long _
+) As Collection
+
+    Dim ws As Worksheet
+    Dim dataTable As ListObject
+    Dim dataRange As Range
+    Dim idRange As Range
+
+    Dim dataValues As Variant
+    Dim idValues As Variant
+
+    Dim columns As IncidentColumnMap
+    Dim sourceRecord As IncidentRecordData
+    Dim candidateRecord As IncidentRecordData
+
+    Dim sourceFaultTerms As Collection
+    Dim sourceNotesTerms As Collection
+    Dim matches As Collection
+    Dim candidateMatch As clsIncidentMatch
+
+    Dim firstDataRow As Long
+    Dim lastDataRow As Long
+    Dim sourceIndex As Long
+    Dim candidateIndex As Long
+    Dim candidateWorksheetRow As Long
+
+    Set ws = ThisWorkbook.Worksheets(INCIDENT_SHEET_NAME)
+    Set dataTable = ws.ListObjects(INCIDENT_TABLE_NAME)
+
+    LoadIncidentColumnMap _
+        dataTable, _
+        columns
+
+    firstDataRow = dataTable.HeaderRowRange.Row + 1
+    lastDataRow = GetLastIncidentDataRow(dataTable)
+
+    If lastDataRow < firstDataRow Then
+
+        Err.Raise _
+            vbObjectError + 2100, _
+            "FindSimilarIncidents", _
+            "No troubleshooting records are available for comparison."
+
+    End If
+
+    sourceIndex = sourceCell.Row - firstDataRow + 1
+
+    If sourceIndex < 1 _
+        Or sourceCell.Row > lastDataRow Then
+
+        Err.Raise _
+            vbObjectError + 2101, _
+            "FindSimilarIncidents", _
+            "The selected source row is outside the populated record set."
+
+    End If
+
+    Set dataRange = _
+        ws.Range( _
+            ws.Cells( _
+                firstDataRow, _
+                dataTable.Range.Column), _
+            ws.Cells( _
+                lastDataRow, _
+                dataTable.Range.Column + _
+                    dataTable.ListColumns.Count - 1))
+
+    Set idRange = _
+        ws.Range( _
+            ws.Cells( _
+                firstDataRow, _
+                NodeIDColumn("Test Step")), _
+            ws.Cells( _
+                lastDataRow, _
+                NodeIDColumn("Sub Step 4")))
+
+    dataValues = dataRange.value2
+    idValues = idRange.value2
+
+    LoadIncidentRecord _
+        sourceRecord, _
+        dataValues, _
+        idValues, _
+        sourceIndex, _
+        sourceCell.Row, _
+        columns
+
+    Set sourceFaultTerms = _
+        GetIncidentTerms(sourceRecord.FaultText)
+
+    Set sourceNotesTerms = _
+        GetIncidentTerms(sourceRecord.NotesText)
+
+    sourceCriteriaCount = _
+        CountSourceCriteria( _
+            sourceRecord, _
+            sourceNotesTerms)
+
+    If sourceCriteriaCount < MIN_SOURCE_CRITERIA Then
+
+        Err.Raise _
+            vbObjectError + 2102, _
+            "FindSimilarIncidents", _
+            "The selected record does not contain enough information " & _
+            "for a meaningful comparison." & _
+            vbCrLf & vbCrLf & _
+            "Enter at least two of the following before searching:" & _
+            vbCrLf & _
+            "UUT, serial number, Test, test path, Fault, or Notes."
+
+    End If
+
+    sourceSummary = _
+        BuildSourceSummary( _
+            sourceRecord, _
+            sourceNotesTerms)
+
+    recordsEvaluated = 0
+
+    Set matches = New Collection
+
+    For candidateIndex = 1 To UBound(dataValues, 1)
+
+        candidateWorksheetRow = _
+            firstDataRow + candidateIndex - 1
+
+        If candidateWorksheetRow <> sourceRecord.worksheetRow Then
+
+            If IncidentArrayRowHasContent( _
+                    dataValues, _
+                    candidateIndex) Then
+
+                recordsEvaluated = recordsEvaluated + 1
+
+                LoadIncidentRecord _
+                    candidateRecord, _
+                    dataValues, _
+                    idValues, _
+                    candidateIndex, _
+                    candidateWorksheetRow, _
+                    columns
+
+                Set candidateMatch = _
+                    BuildIncidentMatch( _
+                        sourceRecord, _
+                        candidateRecord, _
+                        sourceFaultTerms, _
+                        sourceNotesTerms, _
+                        sourceCriteriaCount)
+
+                If Not candidateMatch Is Nothing Then
+
+                    AddRankedIncidentMatch _
+                        matches, _
+                        candidateMatch
+
+                End If
+
+            End If
+
+        End If
+
+    Next candidateIndex
+
+    Set FindSimilarIncidents = matches
+
+End Function
+
+
+Public Sub OpenSimilarIncidentRow( _
+    ByVal worksheetRow As Long _
+)
+
+    Dim ws As Worksheet
+    Dim dataTable As ListObject
+    Dim firstDataRow As Long
+    Dim lastDataRow As Long
+
+    Set ws = ThisWorkbook.Worksheets(INCIDENT_SHEET_NAME)
+    Set dataTable = ws.ListObjects(INCIDENT_TABLE_NAME)
+
+    firstDataRow = dataTable.HeaderRowRange.Row + 1
+    lastDataRow = GetLastIncidentDataRow(dataTable)
+
+    If worksheetRow < firstDataRow _
+        Or worksheetRow > lastDataRow Then
+
+        MsgBox _
+            "The selected historical record is no longer available.", _
+            vbExclamation, _
+            "Similar Incidents"
+
+        Exit Sub
+
+    End If
+
+    ws.Activate
+
+    Application.Goto _
+        Reference:=ws.Cells( _
+            worksheetRow, _
+            dataTable.Range.Column), _
+        Scroll:=True
+
+End Sub
+
+
+'============================================================
+' RECORD LOADING
+'============================================================
+
+Private Sub LoadIncidentColumnMap( _
+    ByVal dataTable As ListObject, _
+    ByRef columns As IncidentColumnMap _
+)
+
+    columns.DateIndex = dataTable.ListColumns("Date").Index
+    columns.UUTIndex = dataTable.ListColumns("UUT").Index
+    columns.SerialNumberIndex = dataTable.ListColumns("SN").Index
+    columns.TestIndex = dataTable.ListColumns("Test").Index
+    columns.PathStartIndex = dataTable.ListColumns("Test Step").Index
+    columns.FaultIndex = dataTable.ListColumns("Fault").Index
+    columns.CauseIndex = dataTable.ListColumns("Cause").Index
+    columns.ResolutionIndex = dataTable.ListColumns("Resolution").Index
+    columns.NotesIndex = dataTable.ListColumns("Notes").Index
+
+End Sub
+
+
+Private Sub LoadIncidentRecord( _
+    ByRef record As IncidentRecordData, _
+    ByRef dataValues As Variant, _
+    ByRef idValues As Variant, _
+    ByVal rowIndex As Long, _
+    ByVal worksheetRow As Long, _
+    ByRef columns As IncidentColumnMap _
+)
+
+    Dim pathLevel As Long
+
+    record.worksheetRow = worksheetRow
+
+    record.DateText = _
+        FormatIncidentDate( _
+            dataValues( _
+                rowIndex, _
+                columns.DateIndex))
+
+    record.UUT = _
+        IncidentText( _
+            dataValues( _
+                rowIndex, _
+                columns.UUTIndex))
+
+    record.SerialNumber = _
+        IncidentText( _
+            dataValues( _
+                rowIndex, _
+                columns.SerialNumberIndex))
+
+    record.TestName = _
+        IncidentText( _
+            dataValues( _
+                rowIndex, _
+                columns.TestIndex))
+
+    For pathLevel = 1 To 5
+
+        record.PathValues(pathLevel) = _
+            IncidentText( _
+                dataValues( _
+                    rowIndex, _
+                    columns.PathStartIndex + pathLevel - 1))
+
+        record.PathIDs(pathLevel) = _
+            IncidentText( _
+                idValues( _
+                    rowIndex, _
+                    pathLevel))
+
+    Next pathLevel
+
+    record.TestPath = BuildIncidentTestPath(record)
+
+    record.FaultText = _
+        IncidentText( _
+            dataValues( _
+                rowIndex, _
+                columns.FaultIndex))
+
+    record.CauseText = _
+        IncidentText( _
+            dataValues( _
+                rowIndex, _
+                columns.CauseIndex))
+
+    record.ResolutionText = _
+        IncidentText( _
+            dataValues( _
+                rowIndex, _
+                columns.ResolutionIndex))
+
+    record.NotesText = _
+        IncidentText( _
+            dataValues( _
+                rowIndex, _
+                columns.NotesIndex))
+
+End Sub
+
+
+Private Function IncidentArrayRowHasContent( _
+    ByRef dataValues As Variant, _
+    ByVal rowIndex As Long _
+) As Boolean
+
+    Dim columnIndex As Long
+    Dim cellValue As Variant
+
+    For columnIndex = LBound(dataValues, 2) To UBound(dataValues, 2)
+
+        cellValue = dataValues(rowIndex, columnIndex)
+
+        If Not IsError(cellValue) Then
+
+            If Len(Trim$(CStr(cellValue))) > 0 Then
+
+                IncidentArrayRowHasContent = True
+
+                Exit Function
+
+            End If
+
+        End If
+
+    Next columnIndex
+
+End Function
+
+
+Private Function GetLastIncidentDataRow( _
+    ByVal dataTable As ListObject _
+) As Long
+
+    Dim lastCell As Range
+
+    ' Edge Case Defense:
+    ' Tables with no rows are considered to have no incident data.
+    If dataTable.DataBodyRange Is Nothing Then
+
+        GetLastIncidentDataRow = dataTable.HeaderRowRange.Row
+
+        Exit Function
+
+    End If
+
+    Set lastCell = _
+        dataTable.DataBodyRange.Find( _
+            What:="*", _
+            After:=dataTable.DataBodyRange.Cells(1, 1), _
+            LookIn:=xlValues, _
+            LookAt:=xlPart, _
+            SearchOrder:=xlByRows, _
+            SearchDirection:=xlPrevious, _
+            MatchCase:=False)
+
+    ' Edge Case Defense:
+    ' DataBodyRange can exist while containing no populated cells.
+    If lastCell Is Nothing Then
+
+        GetLastIncidentDataRow = dataTable.HeaderRowRange.Row
+
+    Else
+
+        GetLastIncidentDataRow = lastCell.Row
+
+    End If
+
+End Function
+
+
+'============================================================
+' SCORING
+'============================================================
+
+Private Function BuildIncidentMatch( _
+    ByRef sourceRecord As IncidentRecordData, _
+    ByRef candidateRecord As IncidentRecordData, _
+    ByVal sourceFaultTerms As Collection, _
+    ByVal sourceNotesTerms As Collection, _
+    ByVal sourceCriteriaCount As Long _
+) As clsIncidentMatch
+
+    Dim candidateFaultTerms As Collection
+    Dim candidateNotesTerms As Collection
+    Dim result As clsIncidentMatch
+
+    Dim earnedPoints As Long
+    Dim possiblePoints As Long
+    Dim criterionPoints As Long
+    Dim scoreValue As Long
+
+    Dim overlapRatio As Double
+    Dim reasonsText As String
+    Dim differencesText As String
+    Dim sharedTerms As String
+
+    '----------------------------------------------------
+    ' UUT
+    '----------------------------------------------------
+    If IsMeaningfulIncidentText(sourceRecord.UUT) Then
+
+        possiblePoints = possiblePoints + WEIGHT_UUT
+
+        If IncidentValuesMatch( _
+                sourceRecord.UUT, _
+                candidateRecord.UUT) Then
+
+            earnedPoints = earnedPoints + WEIGHT_UUT
+
+            AppendReasonLine _
+                reasonsText, _
+                "Same UUT"
+
+        Else
+
+            AppendReasonLine _
+                differencesText, _
+                "UUT differs: " & _
+                DisplayIncidentValue(candidateRecord.UUT)
+
+        End If
+
+    End If
+
+    '----------------------------------------------------
+    ' SERIAL NUMBER
+    '----------------------------------------------------
+    If IsMeaningfulIncidentText(sourceRecord.SerialNumber) Then
+
+        possiblePoints = _
+            possiblePoints + WEIGHT_SERIAL_NUMBER
+
+        If IncidentValuesMatch( _
+                sourceRecord.SerialNumber, _
+                candidateRecord.SerialNumber) Then
+
+            earnedPoints = _
+                earnedPoints + WEIGHT_SERIAL_NUMBER
+
+            AppendReasonLine _
+                reasonsText, _
+                "Same serial number"
+
+        ElseIf IsMeaningfulIncidentText(candidateRecord.SerialNumber) Then
+
+            AppendReasonLine _
+                differencesText, _
+                "Serial number differs: " & _
+                candidateRecord.SerialNumber
+
+        End If
+
+    End If
+
+    '----------------------------------------------------
+    ' TEST
+    '----------------------------------------------------
+    If IsMeaningfulIncidentText(sourceRecord.TestName) Then
+
+        possiblePoints = possiblePoints + WEIGHT_TEST
+
+        If IncidentValuesMatch( _
+                sourceRecord.TestName, _
+                candidateRecord.TestName) Then
+
+            earnedPoints = earnedPoints + WEIGHT_TEST
+
+            AppendReasonLine _
+                reasonsText, _
+                "Same Test"
+
+        Else
+
+            AppendReasonLine _
+                differencesText, _
+                "Test differs: " & _
+                DisplayIncidentValue(candidateRecord.TestName)
+
+        End If
+
+    End If
+
+    '----------------------------------------------------
+    ' TEST PATH
+    '----------------------------------------------------
+    If GetIncidentPathDepth(sourceRecord) > 0 Then
+
+        possiblePoints = possiblePoints + WEIGHT_TEST_PATH
+
+        criterionPoints = _
+            GetIncidentPathMatchPoints( _
+                sourceRecord, _
+                candidateRecord, _
+                reasonsText, _
+                differencesText)
+
+        earnedPoints = earnedPoints + criterionPoints
+
+    End If
+
+    '----------------------------------------------------
+    ' EXACT FAULT
+    '----------------------------------------------------
+    If IsMeaningfulIncidentText(sourceRecord.FaultText) Then
+
+        possiblePoints = possiblePoints + WEIGHT_FAULT_EXACT
+
+        If IncidentValuesMatch( _
+                sourceRecord.FaultText, _
+                candidateRecord.FaultText) Then
+
+            earnedPoints = earnedPoints + WEIGHT_FAULT_EXACT
+
+            AppendReasonLine _
+                reasonsText, _
+                "Exact Fault match"
+
+        ElseIf IsMeaningfulIncidentText(candidateRecord.FaultText) Then
+
+            AppendReasonLine _
+                differencesText, _
+                "Fault text differs"
+
+        End If
+
+    End If
+
+    '----------------------------------------------------
+    ' FAULT TERMS
+    '----------------------------------------------------
+    If sourceFaultTerms.Count > 0 Then
+
+        possiblePoints = possiblePoints + WEIGHT_FAULT_TERMS
+
+        Set candidateFaultTerms = _
+            GetIncidentTerms(candidateRecord.FaultText)
+
+        overlapRatio = _
+            GetIncidentTermOverlap( _
+                sourceFaultTerms, _
+                candidateFaultTerms, _
+                sharedTerms)
+
+        criterionPoints = _
+            RoundIncidentValue( _
+                WEIGHT_FAULT_TERMS * overlapRatio)
+
+        earnedPoints = earnedPoints + criterionPoints
+
+        If criterionPoints > 0 Then
+
+            AppendReasonLine _
+                reasonsText, _
+                "Fault term overlap " & _
+                Format$(overlapRatio, "0%") & _
+                ": " & _
+                sharedTerms
+
+        End If
+
+    End If
+
+    '----------------------------------------------------
+    ' NOTES TERMS
+    '----------------------------------------------------
+    If sourceNotesTerms.Count > 0 Then
+
+        possiblePoints = possiblePoints + WEIGHT_NOTES_TERMS
+
+        Set candidateNotesTerms = _
+            GetIncidentTerms(candidateRecord.NotesText)
+
+        overlapRatio = _
+            GetIncidentTermOverlap( _
+                sourceNotesTerms, _
+                candidateNotesTerms, _
+                sharedTerms)
+
+        criterionPoints = _
+            RoundIncidentValue( _
+                WEIGHT_NOTES_TERMS * overlapRatio)
+
+        earnedPoints = earnedPoints + criterionPoints
+
+        If criterionPoints > 0 Then
+
+            AppendReasonLine _
+                reasonsText, _
+                "Notes term overlap " & _
+                Format$(overlapRatio, "0%") & _
+                ": " & _
+                sharedTerms
+
+        End If
+
+    End If
+
+    If possiblePoints = 0 Then
+        Exit Function
+    End If
+
+    scoreValue = _
+        RoundIncidentValue( _
+            earnedPoints * 100# / possiblePoints)
+
+    If scoreValue < MIN_RESULT_SCORE Then
+        Exit Function
+    End If
+
+    Set result = New clsIncidentMatch
+
+    result.Initialize _
+        candidateRecord.worksheetRow, _
+        scoreValue, _
+        sourceCriteriaCount, _
+        GetIncidentMatchLevel( _
+            scoreValue, _
+            sourceCriteriaCount), _
+        candidateRecord.DateText, _
+        candidateRecord.UUT, _
+        candidateRecord.SerialNumber, _
+        candidateRecord.TestName, _
+        candidateRecord.TestPath, _
+        candidateRecord.FaultText, _
+        candidateRecord.CauseText, _
+        candidateRecord.ResolutionText, _
+        candidateRecord.NotesText, _
+        reasonsText, _
+        differencesText
+
+    Set BuildIncidentMatch = result
+
+End Function
+
+
+Private Function GetIncidentPathMatchPoints( _
+    ByRef sourceRecord As IncidentRecordData, _
+    ByRef candidateRecord As IncidentRecordData, _
+    ByRef reasonsText As String, _
+    ByRef differencesText As String _
+) As Long
+
+    Dim sourceDepth As Long
+    Dim commonDepth As Long
+    Dim pathLevel As Long
+
+    sourceDepth = GetIncidentPathDepth(sourceRecord)
+
+    For pathLevel = 1 To sourceDepth
+
+        If IncidentPathLevelMatches( _
+                sourceRecord.PathValues(pathLevel), _
+                sourceRecord.PathIDs(pathLevel), _
+                candidateRecord.PathValues(pathLevel), _
+                candidateRecord.PathIDs(pathLevel)) Then
+
+            commonDepth = commonDepth + 1
+
+        Else
+
+            Exit For
+
+        End If
+
+    Next pathLevel
+
+    If commonDepth = 0 Then
+
+        AppendReasonLine _
+            differencesText, _
+            "Test path differs"
+
+        Exit Function
+
+    End If
+
+    GetIncidentPathMatchPoints = _
+        RoundIncidentValue( _
+            WEIGHT_TEST_PATH * commonDepth / sourceDepth)
+
+    If commonDepth = sourceDepth Then
+
+        AppendReasonLine _
+            reasonsText, _
+            "Source test path fully matches"
+
+    Else
+
+        AppendReasonLine _
+            reasonsText, _
+            "Shared test path through " & _
+            IncidentPathFieldName(commonDepth)
+
+    End If
+
+End Function
+
+
+Private Function IncidentPathLevelMatches( _
+    ByVal sourceValue As String, _
+    ByVal sourceNodeID As String, _
+    ByVal candidateValue As String, _
+    ByVal candidateNodeID As String _
+) As Boolean
+
+    If Len(sourceNodeID) > 0 _
+        And Len(candidateNodeID) > 0 Then
+
+        IncidentPathLevelMatches = _
+            IncidentValuesMatch( _
+                sourceNodeID, _
+                candidateNodeID)
+
+    Else
+
+        IncidentPathLevelMatches = _
+            IncidentValuesMatch( _
+                sourceValue, _
+                candidateValue)
+
+    End If
+
+End Function
+
+
+Private Function RoundIncidentValue( _
+    ByVal sourceValue As Double _
+) As Long
+
+    RoundIncidentValue = _
+        CLng( _
+            Fix(sourceValue + 0.5))
+
+End Function
+
+
+Private Function GetIncidentMatchLevel( _
+    ByVal scoreValue As Long, _
+    ByVal evidenceCount As Long _
+) As String
+
+    If scoreValue >= 80 _
+        And evidenceCount >= 4 Then
+
+        GetIncidentMatchLevel = "Strong Match"
+
+    ElseIf scoreValue >= 65 _
+        And evidenceCount >= 3 Then
+
+        GetIncidentMatchLevel = "Good Match"
+
+    ElseIf scoreValue >= 40 Then
+
+        GetIncidentMatchLevel = "Possible Match"
+
+    Else
+
+        GetIncidentMatchLevel = "Weak Match"
+
+    End If
+
+End Function
+
+
+Private Sub AddRankedIncidentMatch( _
+    ByVal matches As Collection, _
+    ByVal candidateMatch As clsIncidentMatch _
+)
+
+    Dim existingMatch As clsIncidentMatch
+    Dim matchIndex As Long
+    Dim inserted As Boolean
+
+    For matchIndex = 1 To matches.Count
+
+        Set existingMatch = matches(matchIndex)
+
+        If candidateMatch.Score > existingMatch.Score _
+            Or _
+            (candidateMatch.Score = existingMatch.Score _
+                And candidateMatch.worksheetRow < _
+                    existingMatch.worksheetRow) Then
+
+            matches.Add _
+                candidateMatch, _
+                Before:=matchIndex
+
+            inserted = True
+
+            Exit For
+
+        End If
+
+    Next matchIndex
+
+    If Not inserted Then
+        matches.Add candidateMatch
+    End If
+
+    If matches.Count > MAX_MATCH_RESULTS Then
+        matches.Remove matches.Count
+    End If
+
+End Sub
+
+
+'============================================================
+' SOURCE SUMMARY
+'============================================================
+
+Private Function CountSourceCriteria( _
+    ByRef sourceRecord As IncidentRecordData, _
+    ByVal sourceNotesTerms As Collection _
+) As Long
+
+    If IsMeaningfulIncidentText(sourceRecord.UUT) Then
+        CountSourceCriteria = CountSourceCriteria + 1
+    End If
+
+    If IsMeaningfulIncidentText(sourceRecord.SerialNumber) Then
+        CountSourceCriteria = CountSourceCriteria + 1
+    End If
+
+    If IsMeaningfulIncidentText(sourceRecord.TestName) Then
+        CountSourceCriteria = CountSourceCriteria + 1
+    End If
+
+    If GetIncidentPathDepth(sourceRecord) > 0 Then
+        CountSourceCriteria = CountSourceCriteria + 1
+    End If
+
+    If IsMeaningfulIncidentText(sourceRecord.FaultText) Then
+        CountSourceCriteria = CountSourceCriteria + 1
+    End If
+
+    If sourceNotesTerms.Count > 0 Then
+        CountSourceCriteria = CountSourceCriteria + 1
+    End If
+
+End Function
+
+
+Private Function BuildSourceSummary( _
+    ByRef sourceRecord As IncidentRecordData, _
+    ByVal sourceNotesTerms As Collection _
+) As String
+
+    Dim summaryText As String
+    Dim criteriaText As String
+
+    AppendPlainLine _
+        summaryText, _
+        "Worksheet Row: " & _
+        CStr(sourceRecord.worksheetRow)
+
+    If Len(sourceRecord.DateText) > 0 Then
+
+        AppendPlainLine _
+            summaryText, _
+            "Date: " & _
+            sourceRecord.DateText
+
+    End If
+
+    AppendPlainLine _
+        summaryText, _
+        "UUT: " & _
+        DisplayIncidentValue(sourceRecord.UUT) & _
+        "    SN: " & _
+        DisplayIncidentValue(sourceRecord.SerialNumber) & _
+        "    Test: " & _
+        DisplayIncidentValue(sourceRecord.TestName)
+
+    If Len(sourceRecord.TestPath) > 0 Then
+
+        AppendPlainLine _
+            summaryText, _
+            "Path: " & _
+            sourceRecord.TestPath
+
+    End If
+
+    If Len(sourceRecord.FaultText) > 0 Then
+
+        AppendPlainLine _
+            summaryText, _
+            "Fault: " & _
+            sourceRecord.FaultText
+
+    End If
+
+    AppendSourceCriterionName _
+        criteriaText, _
+        "UUT", _
+        IsMeaningfulIncidentText(sourceRecord.UUT)
+
+    AppendSourceCriterionName _
+        criteriaText, _
+        "Serial Number", _
+        IsMeaningfulIncidentText(sourceRecord.SerialNumber)
+
+    AppendSourceCriterionName _
+        criteriaText, _
+        "Test", _
+        IsMeaningfulIncidentText(sourceRecord.TestName)
+
+    AppendSourceCriterionName _
+        criteriaText, _
+        "Test Path", _
+        (GetIncidentPathDepth(sourceRecord) > 0)
+
+    AppendSourceCriterionName _
+        criteriaText, _
+        "Fault", _
+        IsMeaningfulIncidentText(sourceRecord.FaultText)
+
+    AppendSourceCriterionName _
+        criteriaText, _
+        "Notes", _
+        (sourceNotesTerms.Count > 0)
+
+    summaryText = _
+        summaryText & _
+        vbCrLf & vbCrLf & _
+        "Criteria used: " & _
+        criteriaText
+
+    BuildSourceSummary = summaryText
+
+End Function
+
+
+Private Sub AppendSourceCriterionName( _
+    ByRef criteriaText As String, _
+    ByVal criterionName As String, _
+    ByVal includeCriterion As Boolean _
+)
+
+    If Not includeCriterion Then
+        Exit Sub
+    End If
+
+    If Len(criteriaText) > 0 Then
+        criteriaText = criteriaText & ", "
+    End If
+
+    criteriaText = criteriaText & criterionName
+
+End Sub
+
+
+'============================================================
+' PATH HELPERS
+'============================================================
+
+Private Function BuildIncidentTestPath( _
+    ByRef record As IncidentRecordData _
+) As String
+
+    Dim pathText As String
+    Dim pathLevel As Long
+
+    For pathLevel = 1 To 5
+
+        If Not IsMeaningfulIncidentText( _
+                record.PathValues(pathLevel)) Then
+
+            Exit For
+
+        End If
+
+        If Len(pathText) > 0 Then
+            pathText = pathText & " > "
+        End If
+
+        pathText = pathText & record.PathValues(pathLevel)
+
+    Next pathLevel
+
+    BuildIncidentTestPath = pathText
+
+End Function
+
+
+Private Function GetIncidentPathDepth( _
+    ByRef record As IncidentRecordData _
+) As Long
+
+    Dim pathLevel As Long
+
+    For pathLevel = 1 To 5
+
+        If Not IsMeaningfulIncidentText( _
+                record.PathValues(pathLevel)) Then
+
+            Exit For
+
+        End If
+
+        GetIncidentPathDepth = pathLevel
+
+    Next pathLevel
+
+End Function
+
+
+Private Function IncidentPathFieldName( _
+    ByVal pathLevel As Long _
+) As String
+
+    Select Case pathLevel
+
+        Case 1
+            IncidentPathFieldName = "Test Step"
+
+        Case 2
+            IncidentPathFieldName = "Sub Step 1"
+
+        Case 3
+            IncidentPathFieldName = "Sub Step 2"
+
+        Case 4
+            IncidentPathFieldName = "Sub Step 3"
+
+        Case 5
+            IncidentPathFieldName = "Sub Step 4"
+
+    End Select
+
+End Function
+
+
+'============================================================
+' TEXT COMPARISON
+'============================================================
+
+Private Function GetIncidentTerms( _
+    ByVal sourceText As String _
+) As Collection
+
+    Dim terms As Collection
+    Dim rawTerms As Variant
+    Dim rawTerm As Variant
+
+    Dim normalizedText As String
+    Dim token As String
+
+    Set terms = New Collection
+
+    normalizedText = NormalizeIncidentTokenText(sourceText)
+
+    If Len(normalizedText) = 0 Then
+
+        Set GetIncidentTerms = terms
+
+        Exit Function
+
+    End If
+
+    rawTerms = Split(normalizedText, " ")
+
+    For Each rawTerm In rawTerms
+
+        token = Trim$(CStr(rawTerm))
+
+        If Len(token) >= 2 Then
+
+            If Not IsIncidentStopWord(token) Then
+
+                If Not IncidentCollectionContains( _
+                        terms, _
+                        token) Then
+
+                    terms.Add token
+
+                End If
+
+            End If
+
+        End If
+
+    Next rawTerm
+
+    Set GetIncidentTerms = terms
+
+End Function
+
+
+Private Function NormalizeIncidentTokenText( _
+    ByVal sourceText As String _
+) As String
+
+    Dim normalizedText As String
+    Dim character As String
+    Dim characterCode As Long
+    Dim characterIndex As Long
+
+    For characterIndex = 1 To Len(sourceText)
+
+        character = Mid$(sourceText, characterIndex, 1)
+        characterCode = AscW(character)
+
+        If _
+            (characterCode >= 48 And characterCode <= 57) _
+            Or _
+            (characterCode >= 65 And characterCode <= 90) _
+            Or _
+            (characterCode >= 97 And characterCode <= 122) Then
+
+            normalizedText = normalizedText & LCase$(character)
+
+        Else
+
+            normalizedText = normalizedText & " "
+
+        End If
+
+    Next characterIndex
+
+    normalizedText = Trim$(normalizedText)
+
+    Do While InStr( _
+            1, _
+            normalizedText, _
+            "  ", _
+            vbBinaryCompare) > 0
+
+        normalizedText = _
+            Replace( _
+                normalizedText, _
+                "  ", _
+                " ")
+
+    Loop
+
+    NormalizeIncidentTokenText = normalizedText
+
+End Function
+
+
+Private Function IsIncidentStopWord( _
+    ByVal token As String _
+) As Boolean
+
+    Select Case token
+
+        Case _
+            "a", "an", "and", "are", "as", "at", _
+            "be", "by", "for", "from", "in", "is", _
+            "it", "of", "on", "or", "the", "to", _
+            "was", "were", "with", "this", "that", _
+            "test", "dummy", "entry", "entries", _
+            "purpose", "purposes", "only"
+
+            IsIncidentStopWord = True
+
+    End Select
+
+End Function
+
+
+Private Function GetIncidentTermOverlap( _
+    ByVal sourceTerms As Collection, _
+    ByVal candidateTerms As Collection, _
+    ByRef sharedTerms As String _
+) As Double
+
+    Dim sourceTerm As Variant
+    Dim sharedCount As Long
+
+    sharedTerms = vbNullString
+
+    If sourceTerms.Count = 0 Then
+        Exit Function
+    End If
+
+    For Each sourceTerm In sourceTerms
+
+        If IncidentCollectionContains( _
+                candidateTerms, _
+                CStr(sourceTerm)) Then
+
+            sharedCount = sharedCount + 1
+
+            If sharedCount <= 6 Then
+
+                If Len(sharedTerms) > 0 Then
+                    sharedTerms = sharedTerms & ", "
+                End If
+
+                sharedTerms = sharedTerms & CStr(sourceTerm)
+
+            End If
+
+        End If
+
+    Next sourceTerm
+
+    GetIncidentTermOverlap = sharedCount / sourceTerms.Count
+
+End Function
+
+
+Private Function IncidentCollectionContains( _
+    ByVal values As Collection, _
+    ByVal searchValue As String _
+) As Boolean
+
+    Dim value As Variant
+
+    For Each value In values
+
+        If StrComp( _
+                CStr(value), _
+                searchValue, _
+                vbTextCompare) = 0 Then
+
+            IncidentCollectionContains = True
+
+            Exit Function
+
+        End If
+
+    Next value
+
+End Function
+
+
+Private Function IncidentValuesMatch( _
+    ByVal firstValue As String, _
+    ByVal secondValue As String _
+) As Boolean
+
+    If Not IsMeaningfulIncidentText(firstValue) _
+        Or Not IsMeaningfulIncidentText(secondValue) Then
+
+        Exit Function
+
+    End If
+
+    IncidentValuesMatch = _
+        (StrComp( _
+            Trim$(firstValue), _
+            Trim$(secondValue), _
+            vbTextCompare) = 0)
+
+End Function
+
+
+Private Function IsMeaningfulIncidentText( _
+    ByVal sourceText As String _
+) As Boolean
+
+    sourceText = Trim$(sourceText)
+
+    IsMeaningfulIncidentText = _
+        (Len(sourceText) > 0) _
+        And _
+        (StrComp( _
+            sourceText, _
+            "-", _
+            vbBinaryCompare) <> 0)
+
+End Function
+
+
+Private Function IncidentText( _
+    ByVal cellValue As Variant _
+) As String
+
+    If IsError(cellValue) _
+        Or IsEmpty(cellValue) Then
+
+        Exit Function
+
+    End If
+
+    IncidentText = Trim$(CStr(cellValue))
+
+End Function
+
+
+Private Function FormatIncidentDate( _
+    ByVal cellValue As Variant _
+) As String
+
+    If IsError(cellValue) _
+        Or IsEmpty(cellValue) Then
+
+        Exit Function
+
+    End If
+
+    If IsDate(cellValue) Then
+
+        FormatIncidentDate = _
+            Format$( _
+                CDate(cellValue), _
+                "dd-mmm-yyyy")
+
+    Else
+
+        FormatIncidentDate = IncidentText(cellValue)
+
+    End If
+
+End Function
+
+
+Private Function DisplayIncidentValue( _
+    ByVal sourceText As String _
+) As String
+
+    If Len(Trim$(sourceText)) = 0 Then
+
+        DisplayIncidentValue = "(blank)"
+
+    Else
+
+        DisplayIncidentValue = sourceText
+
+    End If
+
+End Function
+
+
+Private Sub AppendReasonLine( _
+    ByRef targetText As String, _
+    ByVal lineText As String _
+)
+
+    If Len(lineText) = 0 Then
+        Exit Sub
+    End If
+
+    If Len(targetText) > 0 Then
+        targetText = targetText & vbCrLf
+    End If
+
+    targetText = targetText & "- " & lineText
+
+End Sub
+
+
+Private Sub AppendPlainLine( _
+    ByRef targetText As String, _
+    ByVal lineText As String _
+)
+
+    If Len(lineText) = 0 Then
+        Exit Sub
+    End If
+
+    If Len(targetText) > 0 Then
+        targetText = targetText & vbCrLf
+    End If
+
+    targetText = targetText & lineText
+
+End Sub
+
+
+'============================================================
+' TEST HARNESS
+'============================================================
+
+Public Sub TestIncidentSimilarityEngine()
+
+    Dim sourceCell As Range
+    Dim matches As Collection
+    Dim match As clsIncidentMatch
+
+    Dim failureReason As String
+    Dim sourceSummary As String
+
+    Dim sourceCriteriaCount As Long
+    Dim recordsEvaluated As Long
+    Dim matchIndex As Long
+
+    On Error GoTo TestFailed
+
+    If Not TryResolveSimilarIncidentSource( _
+            ActiveCell, _
+            sourceCell, _
+            failureReason) Then
+
+        Debug.Print "FAIL  " & failureReason
+
+        Exit Sub
+
+    End If
+
+    Set matches = _
+        FindSimilarIncidents( _
+            sourceCell, _
+            sourceSummary, _
+            sourceCriteriaCount, _
+            recordsEvaluated)
+
+    Debug.Print String$(70, "=")
+    Debug.Print "SIMILAR INCIDENTS ENGINE TEST"
+    Debug.Print String$(70, "=")
+    Debug.Print sourceSummary
+    Debug.Print String$(70, "-")
+    Debug.Print CStr(recordsEvaluated) & " records evaluated."
+
+    For matchIndex = 1 To matches.Count
+
+        Set match = matches(matchIndex)
+
+        Debug.Print _
+            Format$(matchIndex, "00") & _
+            "  " & _
+            Format$(match.Score, "000") & _
+            "%  Row " & _
+            CStr(match.worksheetRow) & _
+            "  " & _
+            match.MatchLevel
+
+        Debug.Print match.reasonsText
+
+    Next matchIndex
+
+    Debug.Print String$(70, "=")
+
+    Exit Sub
+
+
+TestFailed:
+
+    Debug.Print _
+        "FAIL  Error " & _
+        CStr(Err.Number) & _
+        "  " & _
+        Err.Description
+
+End Sub
+
+
