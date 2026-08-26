@@ -433,7 +433,7 @@ Private Sub FillRemainingNA( _
                 rowNumber, _
                 FieldColumn(fieldName))
 
-        targetCell.Value = _
+        targetCell.value = _
             "-"
 
         ApplyThemeToCell _
