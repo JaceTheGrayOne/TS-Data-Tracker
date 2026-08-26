@@ -103,8 +103,7 @@ Public Sub TestPrivateSheetViewCapability()
             "The New Sheet View command was enabled and VBA invoked it, " & _
             "but Excel does not report Exit Sheet View as enabled afterward." & _
             vbCrLf & vbCrLf & _
-            "No search/filter implementation should be built around this " & _
-            "until we determine why.", _
+            "Do not build search/filter implementation around this ", _
             vbExclamation, _
             "Private Sheet View Test"
 
@@ -221,13 +220,13 @@ Public Sub TestSilentExitTemporarySheetView()
             vbCrLf & vbCrLf & _
             "Verify:" & _
             vbCrLf & _
-            "1. No Keep This View prompt remained onscreen." & _
+            "1. No 'Keep This View' prompt remained onscreen." & _
             vbCrLf & _
             "2. The eye icon is gone." & _
             vbCrLf & _
             "3. View > Sheet View shows Default." & _
             vbCrLf & _
-            "4. No new named Sheet View was created.", _
+            "4. No new Sheet View was created.", _
             vbInformation, _
             "Silent Sheet View Exit Test"
 
