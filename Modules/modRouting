@@ -21,7 +21,7 @@ Public Function TryGetRoute( _
 ) As Boolean
 
     Dim routes As ListObject
-    Dim routeRow As ListRow
+    Dim routeRow As listRow
 
     Dim colParentField As Long
     Dim colParentValue As Long
