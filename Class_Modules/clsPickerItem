@@ -201,7 +201,7 @@ End Sub
 
 
 Private Sub ItemLabel_MouseMove( _
-    ByVal Button As Integer, _
+    ByVal button As Integer, _
     ByVal Shift As Integer, _
     ByVal X As Single, _
     ByVal Y As Single _
