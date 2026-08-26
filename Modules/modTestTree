@@ -13,13 +13,13 @@ Private Const TEST_HIERARCHY_TABLE As String = "tbl_TestHierarchy"
 '============================================================
 
 Public Function GetRootNodes( _
-    ByVal testName As String _
+    ByVal TestName As String _
 ) As Collection
 
     Dim result As Collection
 
     Dim tbl As ListObject
-    Dim rw As ListRow
+    Dim rw As listRow
 
     Dim colTest As Long
     Dim colParentID As Long
@@ -59,7 +59,7 @@ Public Function GetRootNodes( _
                     rw.Range.Cells( _
                         1, _
                         colTest).value2)), _
-                Trim$(testName), _
+                Trim$(TestName), _
                 vbTextCompare) = 0 _
             And Len(Trim$(CStr( _
                 rw.Range.Cells( _
@@ -91,7 +91,7 @@ Public Function GetChildNodes( _
     Dim result As Collection
 
     Dim tbl As ListObject
-    Dim rw As ListRow
+    Dim rw As listRow
 
     Dim colParentID As Long
 
@@ -162,7 +162,7 @@ Public Function HasChildNodes( _
 ) As Boolean
 
     Dim tbl As ListObject
-    Dim rw As ListRow
+    Dim rw As listRow
 
     Dim colParentID As Long
 
@@ -217,7 +217,7 @@ Public Function GetNodeByID( _
 ) As clsTestNode
 
     Dim tbl As ListObject
-    Dim rw As ListRow
+    Dim rw As listRow
 
     Dim colNodeID As Long
 
@@ -272,7 +272,7 @@ End Function
 '============================================================
 
 Private Function BuildNodeFromHierarchyRow( _
-    ByVal rw As ListRow, _
+    ByVal rw As listRow, _
     ByVal tbl As ListObject _
 ) As clsTestNode
 
