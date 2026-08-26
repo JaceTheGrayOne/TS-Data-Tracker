@@ -1,0 +1,172 @@
+Option Explicit
+
+
+'============================================================
+' MODULE STATE
+'============================================================
+
+Private mWorksheetRow As Long
+Private mScore As Long
+Private mEvidenceCount As Long
+
+Private mMatchLevel As String
+Private mDateText As String
+Private mUUT As String
+Private mSerialNumber As String
+Private mTestName As String
+Private mTestPath As String
+Private mFaultText As String
+Private mCauseText As String
+Private mResolutionText As String
+Private mNotesText As String
+Private mReasonsText As String
+Private mDifferencesText As String
+
+
+'============================================================
+' PUBLIC INTERFACE
+'============================================================
+
+Public Sub Initialize( _
+    ByVal worksheetRow As Long, _
+    ByVal scoreValue As Long, _
+    ByVal evidenceCountValue As Long, _
+    ByVal matchLevelValue As String, _
+    ByVal dateTextValue As String, _
+    ByVal uutValue As String, _
+    ByVal serialNumberValue As String, _
+    ByVal testNameValue As String, _
+    ByVal testPathValue As String, _
+    ByVal faultTextValue As String, _
+    ByVal causeTextValue As String, _
+    ByVal resolutionTextValue As String, _
+    ByVal notesTextValue As String, _
+    ByVal reasonsTextValue As String, _
+    ByVal differencesTextValue As String _
+)
+
+    mWorksheetRow = worksheetRow
+    mScore = scoreValue
+    mEvidenceCount = evidenceCountValue
+
+    mMatchLevel = matchLevelValue
+    mDateText = dateTextValue
+    mUUT = uutValue
+    mSerialNumber = serialNumberValue
+    mTestName = testNameValue
+    mTestPath = testPathValue
+    mFaultText = faultTextValue
+    mCauseText = causeTextValue
+    mResolutionText = resolutionTextValue
+    mNotesText = notesTextValue
+    mReasonsText = reasonsTextValue
+    mDifferencesText = differencesTextValue
+
+End Sub
+
+
+Public Property Get worksheetRow() As Long
+
+    worksheetRow = mWorksheetRow
+
+End Property
+
+
+Public Property Get Score() As Long
+
+    Score = mScore
+
+End Property
+
+
+Public Property Get evidenceCount() As Long
+
+    evidenceCount = mEvidenceCount
+
+End Property
+
+
+Public Property Get MatchLevel() As String
+
+    MatchLevel = mMatchLevel
+
+End Property
+
+
+Public Property Get DateText() As String
+
+    DateText = mDateText
+
+End Property
+
+
+Public Property Get UUT() As String
+
+    UUT = mUUT
+
+End Property
+
+
+Public Property Get SerialNumber() As String
+
+    SerialNumber = mSerialNumber
+
+End Property
+
+
+Public Property Get TestName() As String
+
+    TestName = mTestName
+
+End Property
+
+
+Public Property Get TestPath() As String
+
+    TestPath = mTestPath
+
+End Property
+
+
+Public Property Get FaultText() As String
+
+    FaultText = mFaultText
+
+End Property
+
+
+Public Property Get CauseText() As String
+
+    CauseText = mCauseText
+
+End Property
+
+
+Public Property Get ResolutionText() As String
+
+    ResolutionText = mResolutionText
+
+End Property
+
+
+Public Property Get NotesText() As String
+
+    NotesText = mNotesText
+
+End Property
+
+
+Public Property Get reasonsText() As String
+
+    reasonsText = mReasonsText
+
+End Property
+
+
+Public Property Get differencesText() As String
+
+    differencesText = mDifferencesText
+
+End Property
+
+
