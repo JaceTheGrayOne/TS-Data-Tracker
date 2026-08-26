@@ -20,8 +20,8 @@ Public Sub RebuildTestHierarchy()
     Dim outline As ListObject
     Dim hierarchy As ListObject
 
-    Dim outlineRow As ListRow
-    Dim hierarchyRow As ListRow
+    Dim outlineRow As listRow
+    Dim hierarchyRow As listRow
 
     Dim usedIDs As Object
     Dim lastNodeAtDepth As Object
@@ -66,9 +66,9 @@ Public Sub RebuildTestHierarchy()
     On Error GoTo Fail
 
     ' Capture application state before any operation that can fail.
-    ' Not doing this can lead to a variable assignment race condition
-    ' that would cause the cleanup handler to potentially restore some
-    ' variable's default boolean to `False` erroneously.
+    ' Not doing this can lead to an earlier op throwing before variable
+    ' capture that could cause the cleanup handler to restore some
+    ' variable's default boolean to False erroneously.
     oldEnableEvents = _
         Application.EnableEvents
 
@@ -346,7 +346,7 @@ Public Sub RebuildTestHierarchy()
 
             outlineRow.Range.Cells( _
                 1, _
-                colNodeID).Value = _
+                colNodeID).value = _
                     NodeID
 
         End If
@@ -397,37 +397,37 @@ Public Sub RebuildTestHierarchy()
 
             .Cells( _
                 1, _
-                outColTest).Value = _
+                outColTest).value = _
                     currentTest
 
             .Cells( _
                 1, _
-                outColNodeID).Value = _
+                outColNodeID).value = _
                     NodeID
 
             .Cells( _
                 1, _
-                outColParentID).Value = _
+                outColParentID).value = _
                     ParentID
 
             .Cells( _
                 1, _
-                outColLabel).Value = _
+                outColLabel).value = _
                     labelText
 
             .Cells( _
                 1, _
-                outColDepth).Value = _
+                outColDepth).value = _
                     Depth
 
             .Cells( _
                 1, _
-                outColSort).Value = _
+                outColSort).value = _
                     SortOrder
 
             .Cells( _
                 1, _
-                outColSourceRow).Value = _
+                outColSourceRow).value = _
                     outlineRow.Range.Row
 
         End With
