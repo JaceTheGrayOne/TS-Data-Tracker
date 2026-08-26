@@ -6,7 +6,7 @@ Option Explicit
 '============================================================
 
 Private Sub Worksheet_Change( _
-    ByVal Target As Range _
+    ByVal target As Range _
 )
 
     Dim watchedRange As Range
@@ -23,9 +23,10 @@ Private Sub Worksheet_Change( _
 
     Set watchedRange = _
         Intersect( _
-            Target, _
+            target, _
             Application.Union( _
-                Me.Columns(2), _
+                Me.columns(2), _
+                Me.columns(3), _
                 Me.Range("D:I")))
 
     If watchedRange Is Nothing Then
@@ -46,6 +47,15 @@ Private Sub Worksheet_Change( _
 
         If changedCell.Row < 2 Then
             GoTo CleanUp
+        End If
+
+        If changedCell.Column = 3 Then
+
+            IgnoreCNNumberAsTextError _
+                changedCell
+
+            GoTo CleanUp
+
         End If
 
         fieldName = _
@@ -101,59 +111,68 @@ Private Sub Worksheet_Change( _
 
             If changedCell.Row >= 2 Then
 
-                fieldName = _
-                    SheetFieldName( _
-                        changedCell.Column)
+                If changedCell.Column = 3 Then
 
-                If Len(fieldName) > 0 Then
+                    IgnoreCNNumberAsTextError _
+                        changedCell
 
-                    If changedCell.Column = 2 Then
+                Else
 
-                        UpdateRecordDateFromUUT _
-                            changedCell
+                    fieldName = _
+                        SheetFieldName( _
+                            changedCell.Column)
 
-                    End If
+                    If Len(fieldName) > 0 Then
 
-                    If changedCell.Column >= 5 _
-                        And changedCell.Column <= 9 Then
+                        If changedCell.Column = 2 Then
 
-                        SyncNodeIdentityForField _
-                            Me, _
-                            changedCell.Row, _
+                            UpdateRecordDateFromUUT _
+                                changedCell
+
+                        End If
+
+                        If changedCell.Column >= 5 _
+                            And changedCell.Column <= 9 Then
+
+                            SyncNodeIdentityForField _
+                                Me, _
+                                changedCell.Row, _
+                                fieldName
+
+                        End If
+
+                        ApplyThemeToCell _
+                            changedCell, _
                             fieldName
 
-                    End If
+                        ' Bulk clears reconcile once from the highest
+                        ' changed parent field in each affected row.
+                        If Len(Trim$(CStr( _
+                                changedCell.value2))) = 0 Then
 
-                    ApplyThemeToCell _
-                        changedCell, _
-                        fieldName
+                            If changedCell.Column >= 4 _
+                                And changedCell.Column <= 8 Then
 
-                    ' Bulk clears reconcile once from the highest
-                    ' changed parent field in each affected row.
-                    If Len(Trim$(CStr( _
-                            changedCell.value2))) = 0 Then
+                                rowKey = _
+                                    CStr(changedCell.Row)
 
-                        If changedCell.Column >= 4 _
-                            And changedCell.Column <= 8 Then
+                                If Not rowsToReconcile.Exists( _
+                                        rowKey) Then
 
-                            rowKey = _
-                                CStr(changedCell.Row)
-
-                            If Not rowsToReconcile.Exists( _
-                                    rowKey) Then
-
-                                rowsToReconcile.Add _
-                                    rowKey, _
-                                    changedCell.Column
-
-                            ElseIf changedCell.Column < _
-                                    CLng( _
-                                        rowsToReconcile( _
-                                            rowKey)) Then
-
-                                rowsToReconcile( _
-                                    rowKey) = _
+                                    rowsToReconcile.Add _
+                                        rowKey, _
                                         changedCell.Column
+
+                                ElseIf changedCell.Column < _
+                                        CLng( _
+                                            rowsToReconcile( _
+                                                rowKey)) Then
+
+                                    rowsToReconcile( _
+                                        rowKey) = _
+                                            changedCell.Column
+
+                                End If
 
                             End If
 
@@ -219,20 +238,20 @@ End Sub
 
 
 Private Sub Worksheet_BeforeDoubleClick( _
-    ByVal Target As Range, _
+    ByVal target As Range, _
     Cancel As Boolean _
 )
 
-    If Target.CountLarge <> 1 Then
+    If target.CountLarge <> 1 Then
         Exit Sub
     End If
 
-    If Target.Row < 2 Then
+    If target.Row < 2 Then
         Exit Sub
     End If
 
     ' Custom picker fields: UUT and Test hierarchy.
-    Select Case Target.Column
+    Select Case target.Column
 
         Case 2, 4, 5, 6, 7, 8, 9
 
@@ -246,7 +265,7 @@ Private Sub Worksheet_BeforeDoubleClick( _
         True
 
     OpenPickerForCell _
-        Target
+        target
 
 End Sub
 
@@ -328,6 +347,21 @@ Private Sub UpdateRecordDateFromUUT( _
 
     dateCell.value2 = _
         CDbl(recordDate)
+
+End Sub
+
+Private Sub IgnoreCNNumberAsTextError( _
+    ByVal cnCell As Range _
+)
+
+    If cnCell.Errors.item( _
+            xlNumberAsText).value Then
+
+        cnCell.Errors.item( _
+            xlNumberAsText).Ignore = _
+                True
+
+    End If
 
 End Sub
 
