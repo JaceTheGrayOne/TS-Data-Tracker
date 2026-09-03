@@ -2,6 +2,14 @@ Option Explicit
 
 
 '============================================================
+' CONFIGURATION
+'============================================================
+
+Private Const STATUS_MULTIPLE_BRANCHES As String = "Only one branch can be selected"
+Private Const STATUS_IDENTITY_UNAVAILABLE As String = "Selection identity is unavailable"
+
+
+'============================================================
 ' MODULE STATE
 '============================================================
 
@@ -12,6 +20,16 @@ Private mKeyboardIndex As Long
 Private mTargetIDColumn As Long
 Private mHandlers As Collection
 Private mSuppressSearchChange As Boolean
+Private mAllowMultipleSelection As Boolean
+Private mKeyboardNavigationActive As Boolean
+Private mGuidedEntryMode As Boolean
+Private mSelectionConfirmed As Boolean
+
+Private mSelectedItems As Object
+Private mBranchItems As Object
+Private mSelectedBranchCount As Long
+
+Private mSelectionStatus As MSForms.Label
 
 
 '============================================================
@@ -23,102 +41,112 @@ Public Sub LoadPicker( _
     ByVal fieldName As String, _
     ByVal values As Collection, _
     Optional ByVal contextText As String = "", _
-    Optional ByVal targetIDColumn As Long = 0 _
+    Optional ByVal targetIDColumn As Long = 0, _
+    Optional ByVal allowMultipleSelection As Boolean = False, _
+    Optional ByVal guidedEntryMode As Boolean = False _
 )
+
+    If targetCell Is Nothing Then Exit Sub
+    If values Is Nothing Then Exit Sub
 
     Set mTarget = targetCell
     Set mValues = values
 
     mFieldName = fieldName
     mTargetIDColumn = targetIDColumn
+    mAllowMultipleSelection = allowMultipleSelection
+    mKeyboardNavigationActive = False
+    mGuidedEntryMode = guidedEntryMode
+    mSelectionConfirmed = False
 
-    lblTitle.Caption = _
-        UCase$(fieldName)
+    lblTitle.Caption = UCase$(fieldName)
 
     If Len(Trim$(contextText)) = 0 Then
-        lblPath.Caption = _
-            "ROOT SELECTION"
+        lblPath.Caption = "ROOT SELECTION"
     Else
-        lblPath.Caption = _
-            contextText
+        lblPath.Caption = contextText
     End If
 
-    ' Clear search without triggering intermediate rebuild.
+    InitializeSelectionState
+
+    ' Search is cleared without rebuilding the list between assignments.
     mSuppressSearchChange = True
-
-    txtSearch.value = _
-        vbNullString
-
+    txtSearch.value = vbNullString
     mSuppressSearchChange = False
 
     UpdateSearchHint
-
-    SizePickerForContent _
-        mValues
-
+    UpdateSelectionStatus
+    SizePickerForContent mValues
     BuildItems
 
 End Sub
 
 
-Public Sub CommitValue( _
-    ByVal selectedValue As String, _
-    Optional ByVal selectedKey As String = "" _
-)
+Public Property Get SelectionConfirmed() As Boolean
 
-    If mTarget Is Nothing Then
-        Exit Sub
-    End If
+    SelectionConfirmed = mSelectionConfirmed
+
+End Property
+
+
+Public Sub CommitValue(ByVal selectedValue As String, Optional ByVal selectedKey As String = "")
+
+    If mTarget Is Nothing Then Exit Sub
 
     '----------------------------------------------------
     ' TREE-BACKED IDENTITY
     '----------------------------------------------------
-    ' Write Node ID first so Worksheet_Change sees the correct
-    ' identity when the visible value is committed. The helper
-    ' column is not a watched entry column.
+    ' Node identity is written before the visible value so Worksheet_Change sees a synchronized pair.
     If mTargetIDColumn > 0 Then
-        mTarget.Worksheet.Cells( _
-            mTarget.Row, _
-            mTargetIDColumn).value = _
-                selectedKey
+        mTarget.Worksheet.Cells(mTarget.Row, mTargetIDColumn).value2 = selectedKey
     End If
 
-    mTarget.value = _
-        selectedValue
+    mTarget.value2 = selectedValue
 
-    ApplyThemeToCell _
-        mTarget, _
-        mFieldName
-
-    Unload Me
+    mSelectionConfirmed = True
+    ClosePicker
 
 End Sub
 
 
-Public Sub HoverItem( _
-    ByVal hoveredItem As clsPickerItem _
-)
+Public Sub HandleItemClick(ByVal selectedItem As clsPickerItem)
 
-    Dim i As Long
-    Dim handler As clsPickerItem
+    If selectedItem Is Nothing Then Exit Sub
 
-    If mHandlers Is Nothing Then
+    HoverItem selectedItem
+
+    If mAllowMultipleSelection Then
+
+        ToggleItemSelection selectedItem
+
+        txtSearch.SetFocus
+        mKeyboardNavigationActive = True
+
         Exit Sub
+
     End If
 
-    For i = 1 To mHandlers.Count
+    CommitValue selectedItem.itemValue, selectedItem.itemKey
 
-        Set handler = _
-            mHandlers(i)
+End Sub
+Public Sub HoverItem(ByVal hoveredItem As clsPickerItem)
+
+    Dim itemIndex As Long
+    Dim handler As clsPickerItem
+
+    If mHandlers Is Nothing Then Exit Sub
+
+    For itemIndex = 1 To mHandlers.Count
+
+        Set handler = mHandlers(itemIndex)
 
         If handler Is hoveredItem Then
-            mKeyboardIndex = i
+            mKeyboardIndex = itemIndex
         End If
 
-        handler.SetHovered _
-            (handler Is hoveredItem)
+        handler.SetHovered (handler Is hoveredItem)
 
-    Next i
+    Next itemIndex
 
 End Sub
 
@@ -129,37 +157,24 @@ End Sub
 
 Private Sub UserForm_Initialize()
 
-    Set mHandlers = _
-        New Collection
+    Set mHandlers = New Collection
 
     '----------------------------------------------------
     ' FORM
     '----------------------------------------------------
-    Me.BackColor = _
-        UIColor_FormBackground()
-
-    Me.Caption = _
-        UI_APP_CAPTION
+    Me.BackColor = UIColor_FormBackground()
+    Me.Caption = UI_APP_CAPTION
 
     '----------------------------------------------------
     ' TITLE
     '----------------------------------------------------
     With lblTitle
 
-        .BackStyle = _
-            fmBackStyleTransparent
-
-        .ForeColor = _
-            UIColor_TextPrimary()
-
-        .Font.Name = _
-            UI_FONT
-
-        .Font.Size = _
-            UI_TITLE_FONT_SIZE
-
-        .Font.Bold = _
-            True
+        .BackStyle = fmBackStyleTransparent
+        .ForeColor = UIColor_TextPrimary()
+        .Font.Name = UI_FONT
+        .Font.Size = UI_TITLE_FONT_SIZE
+        .Font.Bold = True
 
     End With
 
@@ -168,23 +183,12 @@ Private Sub UserForm_Initialize()
     '----------------------------------------------------
     With lblPath
 
-        .BackStyle = _
-            fmBackStyleTransparent
-
-        .ForeColor = _
-            UIColor_TextMuted()
-
-        .Font.Name = _
-            UI_FONT
-
-        .Font.Size = _
-            UI_PATH_FONT_SIZE
-
-        .Font.Bold = _
-            False
-
-        .WordWrap = _
-            True
+        .BackStyle = fmBackStyleTransparent
+        .ForeColor = UIColor_TextMuted()
+        .Font.Name = UI_FONT
+        .Font.Size = UI_PATH_FONT_SIZE
+        .Font.Bold = False
+        .WordWrap = True
 
     End With
 
@@ -193,23 +197,12 @@ Private Sub UserForm_Initialize()
     '----------------------------------------------------
     With txtSearch
 
-        .BackColor = _
-            UIColor_InputBackground()
-
-        .ForeColor = _
-            UIColor_TextPrimary()
-
-        .BorderStyle = _
-            fmBorderStyleSingle
-
-        .BorderColor = _
-            UIColor_InputBorder()
-
-        .Font.Name = _
-            UI_FONT
-
-        .Font.Size = _
-            UI_SEARCH_FONT_SIZE
+        .BackColor = UIColor_InputBackground()
+        .ForeColor = UIColor_TextPrimary()
+        .BorderStyle = fmBorderStyleSingle
+        .BorderColor = UIColor_InputBorder()
+        .Font.Name = UI_FONT
+        .Font.Size = UI_SEARCH_FONT_SIZE
 
     End With
 
@@ -218,26 +211,13 @@ Private Sub UserForm_Initialize()
     '----------------------------------------------------
     With lblSearchHint
 
-        .Caption = _
-            "Search"
-
-        .BackStyle = _
-            fmBackStyleTransparent
-
-        .ForeColor = _
-            UIColor_TextMuted()
-
-        .Font.Name = _
-            UI_FONT
-
-        .Font.Size = _
-            UI_SEARCH_FONT_SIZE
-
-        .Font.Bold = _
-            False
-
-        .TextAlign = _
-            fmTextAlignCenter
+        .Caption = "Search"
+        .BackStyle = fmBackStyleTransparent
+        .ForeColor = UIColor_TextMuted()
+        .Font.Name = UI_FONT
+        .Font.Size = UI_SEARCH_FONT_SIZE
+        .Font.Bold = False
+        .TextAlign = fmTextAlignCenter
 
     End With
 
@@ -246,20 +226,49 @@ Private Sub UserForm_Initialize()
     '----------------------------------------------------
     With fraItems
 
-        .Caption = _
-            vbNullString
+        .Caption = vbNullString
+        .BackColor = UIColor_PanelBackground()
+        .ForeColor = UIColor_TextPrimary()
+        .ScrollBars = fmScrollBarsVertical
+        .KeepScrollBarsVisible = fmScrollBarsNone
 
-        .BackColor = _
-            UIColor_PanelBackground()
+    End With
 
-        .ForeColor = _
-            UIColor_TextPrimary()
+    '----------------------------------------------------
+    ' SELECTION STATUS
+    '----------------------------------------------------
+    Set mSelectionStatus = Me.Controls.Add("Forms.Label.1", "lblSelectionStatusRuntime", True)
 
-        .ScrollBars = _
-            fmScrollBarsVertical
+    With mSelectionStatus
 
-        .KeepScrollBarsVisible = _
-            fmScrollBarsNone
+        .Caption = vbNullString
+        .BackStyle = fmBackStyleTransparent
+        .ForeColor = UIColor_TextMuted()
+        .Font.Name = UI_FONT
+        .Font.Size = UI_STATUS_FONT_SIZE
+        .Font.Bold = False
+        .TextAlign = fmTextAlignLeft
+        .Visible = False
+
+    End With
+
+    '----------------------------------------------------
+    ' CONFIRM BUTTON
+    '----------------------------------------------------
+    With cmdConfirm
+
+        .Caption = "Confirm"
+        .BackColor = UIColor_ButtonBackground()
+        .ForeColor = UIColor_ButtonText()
+        .Font.Name = UI_FONT
+        .Font.Size = UI_BUTTON_FONT_SIZE
+        .Font.Bold = False
+        .Visible = False
+        .Enabled = False
+        .Default = False
+        .Cancel = False
+        .TabStop = False
+        .TabIndex = txtSearch.TabIndex + 1
 
     End With
 
@@ -267,11 +276,52 @@ Private Sub UserForm_Initialize()
     UpdateSearchHint
 
 End Sub
-
-
 Private Sub UserForm_Activate()
 
+    mKeyboardNavigationActive = False
     txtSearch.SetFocus
+
+End Sub
+
+
+Private Sub UserForm_QueryClose( _
+    Cancel As Integer, _
+    CloseMode As Integer _
+)
+
+    If mGuidedEntryMode And CloseMode = vbFormControlMenu Then
+
+        Cancel = True
+        CancelPicker
+
+        Exit Sub
+
+    End If
+
+    ReleasePickerItems
+
+    Set mSelectedItems = Nothing
+    Set mBranchItems = Nothing
+    Set mSelectionStatus = Nothing
+
+End Sub
+
+
+Private Sub ClosePicker()
+
+    If mGuidedEntryMode Then
+        Me.Hide
+    Else
+        Unload Me
+    End If
+
+End Sub
+
+
+Private Sub CancelPicker()
+
+    mSelectionConfirmed = False
+    ClosePicker
 
 End Sub
 
@@ -282,27 +332,64 @@ End Sub
 
 Private Sub txtSearch_Change()
 
+    mKeyboardNavigationActive = False
+
     UpdateSearchHint
 
-    If mSuppressSearchChange Then
-        Exit Sub
-    End If
-
-    If mValues Is Nothing Then
-        Exit Sub
-    End If
+    If mSuppressSearchChange Then Exit Sub
 
     BuildItems
 
 End Sub
 
 
+Private Sub txtSearch_Enter()
+
+    mKeyboardNavigationActive = False
+
+End Sub
+
+
+Private Sub txtSearch_MouseDown( _
+    ByVal button As Integer, _
+    ByVal Shift As Integer, _
+    ByVal X As Single, _
+    ByVal Y As Single _
+)
+
+    mKeyboardNavigationActive = False
+
+End Sub
+
+
 Private Sub lblSearchHint_Click()
 
+    mKeyboardNavigationActive = False
     txtSearch.SetFocus
 
 End Sub
 
+
+
+
+Private Sub cmdConfirm_Click()
+
+    If Not mAllowMultipleSelection Then Exit Sub
+    If Not cmdConfirm.Enabled Then Exit Sub
+
+    CommitSelectedValues
+
+End Sub
+
+
+Private Sub cmdConfirm_KeyDown(ByVal KeyCode As MSForms.ReturnInteger, ByVal Shift As Integer)
+
+    If KeyCode <> vbKeyEscape Then Exit Sub
+
+    CancelPicker
+    KeyCode = 0
+
+End Sub
 
 Private Sub fraItems_MouseMove( _
     ByVal button As Integer, _
@@ -316,374 +403,552 @@ Private Sub fraItems_MouseMove( _
 End Sub
 
 
-Private Sub txtSearch_KeyDown( _
-    ByVal KeyCode As MSForms.ReturnInteger, _
-    ByVal Shift As Integer _
-)
+Private Sub txtSearch_KeyDown(ByVal KeyCode As MSForms.ReturnInteger, ByVal Shift As Integer)
 
     Select Case KeyCode
 
         Case vbKeyDown
 
+            mKeyboardNavigationActive = True
             MoveKeyboardSelection 1
-
             KeyCode = 0
 
         Case vbKeyUp
 
+            mKeyboardNavigationActive = True
             MoveKeyboardSelection -1
-
             KeyCode = 0
+
+        Case vbKeySpace
+
+            If mAllowMultipleSelection And mKeyboardNavigationActive Then
+
+                ToggleKeyboardSelection
+                KeyCode = 0
+
+            End If
 
         Case vbKeyReturn
 
-            CommitKeyboardSelection
+            If mAllowMultipleSelection Then
+
+                If cmdConfirm.Enabled Then
+                    CommitSelectedValues
+                End If
+
+            Else
+
+                CommitKeyboardSelection
+
+            End If
 
             KeyCode = 0
 
         Case vbKeyEscape
 
-            Unload Me
-
+            CancelPicker
             KeyCode = 0
+
+        Case Else
+
+            mKeyboardNavigationActive = False
 
     End Select
 
 End Sub
-
-
 '============================================================
 ' ITEM CONSTRUCTION
 '============================================================
 
 Private Sub BuildItems()
 
-    Dim i As Long
-
+    Dim itemIndex As Long
     Dim visibleIndex As Long
     Dim selectedIndex As Long
-
+    Dim restoredIndex As Long
     Dim item As Variant
-
     Dim itemText As String
-    Dim ItemKey As String
-
+    Dim itemKey As String
+    Dim itemToken As String
     Dim searchText As String
-    Dim currentValue As String
-    Dim currentKey As String
-
+    Dim keyboardToken As String
     Dim itemTop As Single
     Dim rowLeft As Single
     Dim rowWidth As Single
-
-    Dim lbl As MSForms.Label
-    Dim accent As MSForms.Label
-
+    Dim isSelected As Boolean
+    Dim isBranch As Boolean
+    Dim itemLabel As MSForms.Label
+    Dim accentLabel As MSForms.Label
     Dim handler As clsPickerItem
-    Dim node As clsTestNode
 
-    If mValues Is Nothing Then
-        Exit Sub
-    End If
+    If mValues Is Nothing Then Exit Sub
 
-    ' Remove previously generated controls.
-    For i = _
-        fraItems.Controls.Count - 1 _
-        To 0 _
-        Step -1
+    keyboardToken = CurrentKeyboardToken()
 
-        If Left$( _
-                fraItems.Controls(i).Name, _
-                Len("lblPicker")) = _
-                "lblPicker" Then
+    ReleasePickerItems
 
-            fraItems.Controls.Remove _
-                fraItems.Controls(i).Name
+    For itemIndex = fraItems.Controls.Count - 1 To 0 Step -1
 
+        If Left$(fraItems.Controls(itemIndex).Name, Len("lblPicker")) = "lblPicker" Then
+            fraItems.Controls.Remove fraItems.Controls(itemIndex).Name
         End If
 
-    Next i
+    Next itemIndex
 
-    Set mHandlers = _
-        New Collection
+    Set mHandlers = New Collection
 
-    searchText = _
-        Trim$(txtSearch.value)
-
-    If Not mTarget Is Nothing Then
-        currentValue = _
-            Trim$(CStr( _
-                mTarget.value2))
-    End If
-
-    If Not mTarget Is Nothing _
-        And mTargetIDColumn > 0 Then
-
-        currentKey = _
-            Trim$(CStr( _
-                mTarget.Worksheet.Cells( _
-                    mTarget.Row, _
-                    mTargetIDColumn).value2))
-
-    End If
-
-    visibleIndex = 0
-    selectedIndex = 0
+    searchText = Trim$(txtSearch.value)
 
     For Each item In mValues
 
-        itemText = _
-            vbNullString
+        ResolvePickerItem item, itemText, itemKey
 
-        ItemKey = _
-            vbNullString
+        itemToken = PickerSelectionToken(itemText, itemKey)
+        isSelected = mSelectedItems.Exists(itemToken)
 
-        If IsObject(item) Then
+        If (mAllowMultipleSelection And isSelected) _
+            Or Len(searchText) = 0 _
+            Or InStr(1, itemText, searchText, vbTextCompare) > 0 Then
 
-            If TypeName(item) = _
-                    "clsTestNode" Then
+            visibleIndex = visibleIndex + 1
 
-                Set node = _
-                    item
+            itemTop = UI_ITEM_PANEL_PADDING + ((visibleIndex - 1) * (UI_ITEM_HEIGHT + UI_ITEM_GAP))
+            rowLeft = UI_ITEM_PANEL_PADDING
+            rowWidth = fraItems.InsideWidth - (UI_ITEM_PANEL_PADDING * 2)
 
-                itemText = _
-                    node.Label
+            Set itemLabel = fraItems.Controls.Add( _
+                "Forms.Label.1", _
+                "lblPickerItem" & visibleIndex, _
+                True)
 
-                ItemKey = _
-                    node.NodeID
+            With itemLabel
 
-            Else
+                .Caption = "   " & itemText
+                .Left = rowLeft
+                .Top = itemTop
+                .Width = rowWidth
+                .Height = UI_ITEM_HEIGHT
+                .BackStyle = fmBackStyleOpaque
+                .BorderStyle = fmBorderStyleSingle
+                .TextAlign = fmTextAlignLeft
+                .Font.Name = UI_FONT
+                .Font.Size = UI_ITEM_FONT_SIZE
+                .Font.Bold = False
+                .WordWrap = False
 
-                Err.Raise _
-                    vbObjectError + 1800, _
-                    "frmPicker.BuildItems", _
-                    "Unsupported picker object type '" & _
-                    TypeName(item) & "'."
+            End With
 
+            ApplyUIPickerTheme itemLabel, mFieldName, itemText
+
+            Set accentLabel = fraItems.Controls.Add( _
+                "Forms.Label.1", _
+                "lblPickerAccent" & visibleIndex, _
+                True)
+
+            With accentLabel
+
+                .Caption = vbNullString
+                .Left = rowLeft
+                .Top = itemTop
+                .Width = UI_ACCENT_WIDTH
+                .Height = UI_ITEM_HEIGHT
+                .BackStyle = fmBackStyleOpaque
+                .BorderStyle = fmBorderStyleNone
+                .Visible = False
+
+            End With
+
+            isBranch = False
+
+            If mBranchItems.Exists(itemToken) Then
+                isBranch = CBool(mBranchItems(itemToken))
             End If
 
-        Else
-
-            itemText = _
-                CStr(item)
-
-            ItemKey = _
-                itemText
-
-        End If
-
-        '----------------------------------------------------
-        ' SEARCH FILTER
-        '----------------------------------------------------
-        If Len(searchText) = 0 _
-            Or InStr( _
-                1, _
-                itemText, _
-                searchText, _
-                vbTextCompare) > 0 Then
-
-            visibleIndex = _
-                visibleIndex + 1
-
-            itemTop = _
-                UI_ITEM_PANEL_PADDING + _
-                ((visibleIndex - 1) * _
-                (UI_ITEM_HEIGHT + UI_ITEM_GAP))
-
-            rowLeft = _
-                UI_ITEM_PANEL_PADDING
-
-            rowWidth = _
-                fraItems.InsideWidth _
-                - (UI_ITEM_PANEL_PADDING * 2)
-
-            '----------------------------------------------------
-            ' ITEM CARD
-            '----------------------------------------------------
-            Set lbl = _
-                fraItems.Controls.Add( _
-                    "Forms.Label.1", _
-                    "lblPickerItem" & visibleIndex, _
-                    True)
-
-            With lbl
-
-                .Caption = _
-                    "   " & itemText
-
-                .Left = _
-                    rowLeft
-
-                .Top = _
-                    itemTop
-
-                .Width = _
-                    rowWidth
-
-                .Height = _
-                    UI_ITEM_HEIGHT
-
-                .BackStyle = _
-                    fmBackStyleOpaque
-
-                .BorderStyle = _
-                    fmBorderStyleSingle
-
-                .TextAlign = _
-                    fmTextAlignLeft
-
-                .Font.Name = _
-                    UI_FONT
-
-                .Font.Size = _
-                    UI_ITEM_FONT_SIZE
-
-                .Font.Bold = _
-                    False
-
-                .WordWrap = _
-                    False
-
-            End With
-
-            ApplyUIPickerTheme _
-                lbl, _
-                mFieldName, _
-                itemText
-
-            '----------------------------------------------------
-            ' SELECTION / HOVER RAIL
-            '----------------------------------------------------
-            Set accent = _
-                fraItems.Controls.Add( _
-                    "Forms.Label.1", _
-                    "lblPickerAccent" & visibleIndex, _
-                    True)
-
-            With accent
-
-                .Caption = _
-                    vbNullString
-
-                .Left = _
-                    rowLeft
-
-                .Top = _
-                    itemTop
-
-                .Width = _
-                    UI_ACCENT_WIDTH
-
-                .Height = _
-                    UI_ITEM_HEIGHT
-
-                .BackStyle = _
-                    fmBackStyleOpaque
-
-                .BorderStyle = _
-                    fmBorderStyleNone
-
-                .Visible = _
-                    False
-
-            End With
-
-            '----------------------------------------------------
-            ' EVENT HANDLER
-            '----------------------------------------------------
-            Set handler = _
-                New clsPickerItem
+            Set handler = New clsPickerItem
 
             handler.Initialize _
-                lbl, _
-                accent, _
+                itemLabel, _
+                accentLabel, _
                 itemText, _
-                ItemKey, _
+                itemKey, _
+                isBranch, _
+                mAllowMultipleSelection, _
                 Me
 
-            '----------------------------------------------------
-            ' CURRENT SELECTION
-            '----------------------------------------------------
-            If _
-                (Len(currentKey) > 0 _
-                    And StrComp( _
-                        ItemKey, _
-                        currentKey, _
-                        vbTextCompare) = 0) _
-                Or _
-                (Len(currentKey) = 0 _
-                    And StrComp( _
-                        itemText, _
-                        currentValue, _
-                        vbTextCompare) = 0) Then
+            handler.SetSelected isSelected
 
-                handler.SetSelected _
-                    True
+            If isSelected And selectedIndex = 0 Then
+                selectedIndex = visibleIndex
+            End If
 
-                selectedIndex = _
-                    visibleIndex
+            If Len(keyboardToken) > 0 Then
 
-            Else
-
-                handler.SetSelected _
-                    False
+                If StrComp(itemToken, keyboardToken, vbTextCompare) = 0 Then
+                    restoredIndex = visibleIndex
+                End If
 
             End If
 
-            mHandlers.Add _
-                handler
+            mHandlers.Add handler
 
         End If
 
     Next item
 
-    '----------------------------------------------------
-    ' SCROLLABLE CONTENT
-    '----------------------------------------------------
-    fraItems.ScrollTop = _
-        0
+    fraItems.ScrollTop = 0
 
     If visibleIndex > 0 Then
 
-        fraItems.ScrollHeight = _
-            (UI_ITEM_PANEL_PADDING * 2) + _
+        fraItems.ScrollHeight = (UI_ITEM_PANEL_PADDING * 2) + _
             (visibleIndex * UI_ITEM_HEIGHT) + _
             ((visibleIndex - 1) * UI_ITEM_GAP)
 
     Else
 
-        fraItems.ScrollHeight = _
-            fraItems.InsideHeight
+        fraItems.ScrollHeight = fraItems.InsideHeight
 
     End If
 
-    '----------------------------------------------------
-    ' INITIAL KEYBOARD POSITION
-    '----------------------------------------------------
     If visibleIndex = 0 Then
 
-        mKeyboardIndex = _
-            0
+        mKeyboardIndex = 0
+
+    ElseIf restoredIndex > 0 Then
+
+        mKeyboardIndex = restoredIndex
+        HighlightKeyboardItem
+
+    ElseIf selectedIndex > 0 Then
+
+        mKeyboardIndex = selectedIndex
+        HighlightKeyboardItem
 
     Else
 
-        If selectedIndex > 0 Then
-
-            mKeyboardIndex = _
-                selectedIndex
-
-        Else
-
-            mKeyboardIndex = _
-                1
-
-        End If
-
+        mKeyboardIndex = 1
         HighlightKeyboardItem
 
     End If
 
 End Sub
+
+
+Private Sub ReleasePickerItems()
+
+    Dim handler As clsPickerItem
+
+    If mHandlers Is Nothing Then Exit Sub
+
+    For Each handler In mHandlers
+        handler.Cleanup
+    Next handler
+
+    Set mHandlers = Nothing
+
+End Sub
+
+
+'============================================================
+' SELECTION STATE
+'============================================================
+
+Private Sub InitializeSelectionState()
+
+    Set mSelectedItems = CreateObject("Scripting.Dictionary")
+    mSelectedItems.CompareMode = vbTextCompare
+
+    Set mBranchItems = CreateObject("Scripting.Dictionary")
+    mBranchItems.CompareMode = vbTextCompare
+
+    LoadBranchMetadata
+    LoadCurrentSelections
+    RecountSelectedBranches
+
+End Sub
+
+
+Private Sub LoadBranchMetadata()
+
+    Dim item As Variant
+    Dim itemText As String
+    Dim itemKey As String
+    Dim itemToken As String
+    Dim isBranch As Boolean
+
+    For Each item In mValues
+
+        ResolvePickerItem item, itemText, itemKey
+
+        itemToken = PickerSelectionToken(itemText, itemKey)
+        isBranch = False
+
+        If mAllowMultipleSelection Then
+            isBranch = HierarchyItemHasChildren(mFieldName, itemText, itemKey)
+        End If
+
+        mBranchItems(itemToken) = isBranch
+
+    Next item
+
+End Sub
+
+
+Private Sub LoadCurrentSelections()
+
+    Dim valueLines As Collection
+    Dim nodeIDLines As Collection
+    Dim item As Variant
+    Dim itemText As String
+    Dim itemKey As String
+    Dim itemToken As String
+    Dim currentValue As String
+    Dim currentNodeIDs As String
+    Dim useNodeIDs As Boolean
+    Dim isSelected As Boolean
+
+    currentValue = ReadRangeText(mTarget)
+
+    If mTargetIDColumn > 0 Then
+        currentNodeIDs = ReadRangeText(mTarget.Worksheet.Cells(mTarget.Row, mTargetIDColumn))
+    End If
+
+    Set valueLines = GetHierarchySelectionLines(currentValue)
+    Set nodeIDLines = GetHierarchySelectionLines(currentNodeIDs)
+
+    useNodeIDs = mTargetIDColumn > 0 _
+        And nodeIDLines.Count > 0 _
+        And nodeIDLines.Count = valueLines.Count
+
+    For Each item In mValues
+
+        ResolvePickerItem item, itemText, itemKey
+
+        If useNodeIDs Then
+            isSelected = CollectionContainsText(nodeIDLines, itemKey)
+        Else
+            isSelected = CollectionContainsText(valueLines, itemText)
+        End If
+
+        If isSelected Then
+
+            itemToken = PickerSelectionToken(itemText, itemKey)
+
+            If Not mSelectedItems.Exists(itemToken) Then
+                mSelectedItems.Add itemToken, True
+            End If
+
+        End If
+
+    Next item
+
+End Sub
+
+
+Private Sub ToggleItemSelection(ByVal selectedItem As clsPickerItem)
+
+    Dim itemToken As String
+
+    itemToken = PickerSelectionToken(selectedItem.itemValue, selectedItem.itemKey)
+
+    If mSelectedItems.Exists(itemToken) Then
+
+        mSelectedItems.Remove itemToken
+
+    Else
+
+        If selectedItem.isBranch And mSelectedBranchCount >= 1 Then
+
+            ShowSelectionError STATUS_MULTIPLE_BRANCHES
+
+            Exit Sub
+
+        End If
+
+        mSelectedItems.Add itemToken, True
+
+    End If
+
+    RecountSelectedBranches
+    UpdateSelectionStatus
+    BuildItems
+
+End Sub
+Private Sub RecountSelectedBranches()
+
+    Dim itemToken As Variant
+
+    mSelectedBranchCount = 0
+
+    For Each itemToken In mSelectedItems.keys
+
+        If mBranchItems.Exists(CStr(itemToken)) Then
+
+            If CBool(mBranchItems(CStr(itemToken))) Then
+                mSelectedBranchCount = mSelectedBranchCount + 1
+            End If
+
+        End If
+
+    Next itemToken
+
+End Sub
+
+
+Private Sub CommitSelectedValues()
+
+    Dim selectedValues As Collection
+    Dim selectedKeys As Collection
+    Dim item As Variant
+    Dim itemText As String
+    Dim itemKey As String
+    Dim itemToken As String
+
+    If mSelectedItems.Count = 0 Then Exit Sub
+
+    If mSelectedBranchCount > 1 Then
+
+        ShowSelectionError STATUS_MULTIPLE_BRANCHES
+
+        Exit Sub
+
+    End If
+
+    Set selectedValues = New Collection
+    Set selectedKeys = New Collection
+
+    For Each item In mValues
+
+        ResolvePickerItem item, itemText, itemKey
+
+        itemToken = PickerSelectionToken(itemText, itemKey)
+
+        If mSelectedItems.Exists(itemToken) Then
+
+            selectedValues.Add itemText
+
+            If mTargetIDColumn > 0 Then
+
+                If Len(itemKey) = 0 Then
+
+                    ShowSelectionError STATUS_IDENTITY_UNAVAILABLE
+
+                    Exit Sub
+
+                End If
+
+                selectedKeys.Add itemKey
+
+            End If
+
+        End If
+
+    Next item
+
+    If selectedValues.Count = 0 Then Exit Sub
+
+    If mTargetIDColumn > 0 Then
+
+        CommitValue _
+            JoinHierarchySelectionLines(selectedValues), _
+            JoinHierarchySelectionLines(selectedKeys)
+
+    Else
+
+        CommitValue JoinHierarchySelectionLines(selectedValues)
+
+    End If
+
+End Sub
+Private Sub UpdateSelectionStatus()
+
+    If mSelectionStatus Is Nothing Then Exit Sub
+
+    mSelectionStatus.Visible = mAllowMultipleSelection
+    cmdConfirm.Visible = mAllowMultipleSelection
+    cmdConfirm.TabStop = mAllowMultipleSelection
+
+    If Not mAllowMultipleSelection Then
+
+        cmdConfirm.Enabled = False
+        cmdConfirm.Default = False
+
+        Exit Sub
+
+    End If
+
+    mSelectionStatus.Caption = CStr(mSelectedItems.Count) & " Entries Selected"
+    mSelectionStatus.ForeColor = UIColor_TextMuted()
+
+    cmdConfirm.Enabled = (mSelectedItems.Count > 0)
+    cmdConfirm.Default = cmdConfirm.Enabled
+
+End Sub
+Private Sub ShowSelectionError(ByVal errorText As String)
+
+    If mSelectionStatus Is Nothing Then Exit Sub
+
+    mSelectionStatus.Caption = errorText
+    mSelectionStatus.ForeColor = UIColor_StatusError()
+    mSelectionStatus.Visible = True
+
+End Sub
+
+
+Private Function PickerSelectionToken( _
+    ByVal itemValue As String, _
+    ByVal itemKey As String _
+) As String
+
+    itemKey = Trim$(itemKey)
+
+    If Len(itemKey) > 0 Then
+        PickerSelectionToken = "ID:" & itemKey
+    Else
+        PickerSelectionToken = "VALUE:" & Trim$(itemValue)
+    End If
+
+End Function
+
+
+Private Function CollectionContainsText( _
+    ByVal values As Collection, _
+    ByVal searchValue As String _
+) As Boolean
+
+    Dim item As Variant
+
+    searchValue = Trim$(searchValue)
+
+    If Len(searchValue) = 0 Then Exit Function
+
+    For Each item In values
+
+        If StrComp(CStr(item), searchValue, vbTextCompare) = 0 Then
+
+            CollectionContainsText = True
+
+            Exit Function
+
+        End If
+
+    Next item
+
+End Function
+
+
+Private Function ReadRangeText(ByVal sourceCell As Range) As String
+
+    Dim cellValue As Variant
+
+    If sourceCell Is Nothing Then Exit Function
+
+    cellValue = sourceCell.value2
+
+    If IsError(cellValue) Or IsEmpty(cellValue) Then Exit Function
+
+    ReadRangeText = Trim$(CStr(cellValue))
+
+End Function
 
 
 '============================================================
@@ -692,21 +957,17 @@ End Sub
 
 Private Sub ClearItemHover()
 
-    Dim i As Long
+    Dim itemIndex As Long
     Dim handler As clsPickerItem
 
-    If mHandlers Is Nothing Then
-        Exit Sub
-    End If
+    If mHandlers Is Nothing Then Exit Sub
 
-    For i = 1 To mHandlers.Count
+    For itemIndex = 1 To mHandlers.Count
 
-        Set handler = _
-            mHandlers(i)
-
+        Set handler = mHandlers(itemIndex)
         handler.SetHovered False
 
-    Next i
+    Next itemIndex
 
 End Sub
 
@@ -715,47 +976,27 @@ End Sub
 ' KEYBOARD NAVIGATION
 '============================================================
 
-Private Sub MoveKeyboardSelection( _
-    ByVal direction As Long _
-)
+Private Sub MoveKeyboardSelection(ByVal direction As Long)
 
-    If mHandlers Is Nothing Then
-        Exit Sub
-    End If
-
-    If mHandlers.Count = 0 Then
-        Exit Sub
-    End If
+    If mHandlers Is Nothing Then Exit Sub
+    If mHandlers.Count = 0 Then Exit Sub
 
     If mKeyboardIndex < 1 Then
 
         If direction > 0 Then
-
             mKeyboardIndex = 1
-
         Else
-
-            mKeyboardIndex = _
-                mHandlers.Count
-
+            mKeyboardIndex = mHandlers.Count
         End If
 
     Else
 
-        mKeyboardIndex = _
-            mKeyboardIndex + direction
+        mKeyboardIndex = mKeyboardIndex + direction
 
-        ' Wrap around.
-        If mKeyboardIndex > _
-                mHandlers.Count Then
-
+        If mKeyboardIndex > mHandlers.Count Then
             mKeyboardIndex = 1
-
         ElseIf mKeyboardIndex < 1 Then
-
-            mKeyboardIndex = _
-                mHandlers.Count
-
+            mKeyboardIndex = mHandlers.Count
         End If
 
     End If
@@ -767,22 +1008,17 @@ End Sub
 
 Private Sub HighlightKeyboardItem()
 
-    Dim i As Long
+    Dim itemIndex As Long
     Dim handler As clsPickerItem
 
-    If mHandlers Is Nothing Then
-        Exit Sub
-    End If
+    If mHandlers Is Nothing Then Exit Sub
 
-    For i = 1 To mHandlers.Count
+    For itemIndex = 1 To mHandlers.Count
 
-        Set handler = _
-            mHandlers(i)
+        Set handler = mHandlers(itemIndex)
+        handler.SetHovered (itemIndex = mKeyboardIndex)
 
-        handler.SetHovered _
-            (i = mKeyboardIndex)
-
-    Next i
+    Next itemIndex
 
     EnsureKeyboardItemVisible
 
@@ -792,76 +1028,54 @@ End Sub
 Private Sub EnsureKeyboardItemVisible()
 
     Dim handler As clsPickerItem
-
     Dim itemTop As Single
     Dim itemBottom As Single
-
     Dim visibleTop As Single
     Dim visibleBottom As Single
-
     Dim newScrollTop As Single
     Dim maximumScrollTop As Single
 
-    If mHandlers Is Nothing Then
-        Exit Sub
-    End If
+    If mHandlers Is Nothing Then Exit Sub
+    If mKeyboardIndex < 1 Or mKeyboardIndex > mHandlers.Count Then Exit Sub
 
-    If mKeyboardIndex < 1 _
-        Or mKeyboardIndex > mHandlers.Count Then
+    Set handler = mHandlers(mKeyboardIndex)
 
-        Exit Sub
+    itemTop = handler.itemLabel.Top
+    itemBottom = itemTop + handler.itemLabel.Height
 
-    End If
-
-    Set handler = _
-        mHandlers(mKeyboardIndex)
-
-    itemTop = _
-        handler.ItemLabel.Top
-
-    itemBottom = _
-        itemTop + _
-        handler.ItemLabel.Height
-
-    visibleTop = _
-        fraItems.ScrollTop
-
-    visibleBottom = _
-        visibleTop + _
-        fraItems.InsideHeight
+    visibleTop = fraItems.ScrollTop
+    visibleBottom = visibleTop + fraItems.InsideHeight
 
     If itemTop < visibleTop Then
 
-        fraItems.ScrollTop = _
-            itemTop
+        fraItems.ScrollTop = itemTop
 
     ElseIf itemBottom > visibleBottom Then
 
-        newScrollTop = _
-            itemBottom _
-            - fraItems.InsideHeight
+        newScrollTop = itemBottom - fraItems.InsideHeight
+        maximumScrollTop = fraItems.ScrollHeight - fraItems.InsideHeight
 
-        maximumScrollTop = _
-            fraItems.ScrollHeight _
-            - fraItems.InsideHeight
+        If maximumScrollTop < 0 Then maximumScrollTop = 0
+        If newScrollTop < 0 Then newScrollTop = 0
+        If newScrollTop > maximumScrollTop Then newScrollTop = maximumScrollTop
 
-        If maximumScrollTop < 0 Then
-            maximumScrollTop = 0
-        End If
-
-        If newScrollTop < 0 Then
-            newScrollTop = 0
-        End If
-
-        If newScrollTop > maximumScrollTop Then
-            newScrollTop = _
-                maximumScrollTop
-        End If
-
-        fraItems.ScrollTop = _
-            newScrollTop
+        fraItems.ScrollTop = newScrollTop
 
     End If
+
+End Sub
+
+
+Private Sub ToggleKeyboardSelection()
+
+    Dim handler As clsPickerItem
+
+    If mHandlers Is Nothing Then Exit Sub
+    If mKeyboardIndex < 1 Or mKeyboardIndex > mHandlers.Count Then Exit Sub
+
+    Set handler = mHandlers(mKeyboardIndex)
+
+    ToggleItemSelection handler
 
 End Sub
 
@@ -870,294 +1084,182 @@ Private Sub CommitKeyboardSelection()
 
     Dim handler As clsPickerItem
 
-    If mHandlers Is Nothing Then
-        Exit Sub
-    End If
+    If mHandlers Is Nothing Then Exit Sub
+    If mKeyboardIndex < 1 Or mKeyboardIndex > mHandlers.Count Then Exit Sub
 
-    If mKeyboardIndex < 1 _
-        Or mKeyboardIndex > mHandlers.Count Then
+    Set handler = mHandlers(mKeyboardIndex)
 
-        Exit Sub
-
-    End If
-
-    Set handler = _
-        mHandlers(mKeyboardIndex)
-
-    CommitValue _
-        handler.ItemValue, _
-        handler.ItemKey
+    CommitValue handler.itemValue, handler.itemKey
 
 End Sub
+
+
+Private Function CurrentKeyboardToken() As String
+
+    Dim handler As clsPickerItem
+
+    If mHandlers Is Nothing Then Exit Function
+    If mKeyboardIndex < 1 Or mKeyboardIndex > mHandlers.Count Then Exit Function
+
+    Set handler = mHandlers(mKeyboardIndex)
+
+    CurrentKeyboardToken = PickerSelectionToken(handler.itemValue, handler.itemKey)
+
+End Function
 
 
 '============================================================
 ' LAYOUT AND SIZING
 '============================================================
 
-Private Sub SizePickerForContent( _
-    ByVal values As Collection _
-)
+Private Sub SizePickerForContent(ByVal values As Collection)
 
     Dim itemCount As Long
     Dim visibleCount As Long
-
     Dim longestTextWidth As Single
-
     Dim desiredInsideHeight As Single
     Dim desiredFrameInsideWidth As Single
     Dim desiredFormInsideWidth As Single
+    Dim minimumFooterInsideWidth As Single
     Dim maximumFormInsideWidth As Single
-
     Dim frameChromeHeight As Single
     Dim frameChromeWidth As Single
-
     Dim formChromeHeight As Single
     Dim formChromeWidth As Single
-
     Dim desiredClientHeight As Single
-
+    Dim footerBottom As Single
     Dim frameRightMargin As Single
     Dim searchRightMargin As Single
     Dim titleRightMargin As Single
     Dim pathRightMargin As Single
-
     Dim scrollAllowance As Single
 
-    If values Is Nothing Then
-        Exit Sub
+    If values Is Nothing Then Exit Sub
+
+    itemCount = values.Count
+
+    frameRightMargin = Me.InsideWidth - (fraItems.Left + fraItems.Width)
+    searchRightMargin = Me.InsideWidth - (txtSearch.Left + txtSearch.Width)
+    titleRightMargin = Me.InsideWidth - (lblTitle.Left + lblTitle.Width)
+    pathRightMargin = Me.InsideWidth - (lblPath.Left + lblPath.Width)
+
+    frameChromeHeight = fraItems.Height - fraItems.InsideHeight
+    frameChromeWidth = fraItems.Width - fraItems.InsideWidth
+
+    formChromeHeight = Me.Height - Me.InsideHeight
+    formChromeWidth = Me.Width - Me.InsideWidth
+
+    visibleCount = itemCount
+
+    If visibleCount < UI_PICKER_MIN_VISIBLE_ITEMS Then
+        visibleCount = UI_PICKER_MIN_VISIBLE_ITEMS
     End If
 
-    itemCount = _
-        values.Count
-
-    '----------------------------------------------------
-    ' PRESERVE CONTROL MARGINS
-    '----------------------------------------------------
-    frameRightMargin = _
-        Me.InsideWidth _
-        - (fraItems.Left + fraItems.Width)
-
-    searchRightMargin = _
-        Me.InsideWidth _
-        - (txtSearch.Left + txtSearch.Width)
-
-    titleRightMargin = _
-        Me.InsideWidth _
-        - (lblTitle.Left + lblTitle.Width)
-
-    pathRightMargin = _
-        Me.InsideWidth _
-        - (lblPath.Left + lblPath.Width)
-
-    frameChromeHeight = _
-        fraItems.Height _
-        - fraItems.InsideHeight
-
-    frameChromeWidth = _
-        fraItems.Width _
-        - fraItems.InsideWidth
-
-    formChromeHeight = _
-        Me.Height _
-        - Me.InsideHeight
-
-    formChromeWidth = _
-        Me.Width _
-        - Me.InsideWidth
-
-    '----------------------------------------------------
-    ' VERTICAL ITEM PANEL
-    '----------------------------------------------------
-    visibleCount = _
-        itemCount
-
-    If visibleCount < _
-            UI_PICKER_MIN_VISIBLE_ITEMS Then
-
-        visibleCount = _
-            UI_PICKER_MIN_VISIBLE_ITEMS
-
+    If visibleCount > UI_PICKER_MAX_VISIBLE_ITEMS Then
+        visibleCount = UI_PICKER_MAX_VISIBLE_ITEMS
     End If
 
-    If visibleCount > _
-            UI_PICKER_MAX_VISIBLE_ITEMS Then
-
-        visibleCount = _
-            UI_PICKER_MAX_VISIBLE_ITEMS
-
-    End If
-
-    desiredInsideHeight = _
-        (UI_ITEM_PANEL_PADDING * 2) + _
-        (visibleCount * UI_ITEM_HEIGHT)
+    desiredInsideHeight = (UI_ITEM_PANEL_PADDING * 2) + (visibleCount * UI_ITEM_HEIGHT)
 
     If visibleCount > 1 Then
-
-        desiredInsideHeight = _
-            desiredInsideHeight + _
-            ((visibleCount - 1) * UI_ITEM_GAP)
-
+        desiredInsideHeight = desiredInsideHeight + ((visibleCount - 1) * UI_ITEM_GAP)
     End If
 
-    fraItems.Height = _
-        desiredInsideHeight + _
-        frameChromeHeight
+    fraItems.Height = desiredInsideHeight + frameChromeHeight
 
-    '----------------------------------------------------
-    ' HORIZONTAL SIZE
-    '----------------------------------------------------
-    longestTextWidth = _
-        MeasureLongestItemWidth( _
-            values)
+    longestTextWidth = MeasureLongestItemWidth(values)
 
-    If itemCount > _
-            UI_PICKER_MAX_VISIBLE_ITEMS Then
-
-        scrollAllowance = _
-            UI_PICKER_SCROLLBAR_ALLOWANCE
-
+    If itemCount > UI_PICKER_MAX_VISIBLE_ITEMS Then
+        scrollAllowance = UI_PICKER_SCROLLBAR_ALLOWANCE
     Else
-
-        scrollAllowance = _
-            0
-
+        scrollAllowance = 0
     End If
 
-    desiredFrameInsideWidth = _
-        (UI_ITEM_PANEL_PADDING * 2) + _
+    desiredFrameInsideWidth = (UI_ITEM_PANEL_PADDING * 2) + _
         longestTextWidth + _
         UI_PICKER_TEXT_RIGHT_PADDING + _
         scrollAllowance
 
-    desiredFormInsideWidth = _
-        fraItems.Left + _
-        desiredFrameInsideWidth + _
-        frameChromeWidth + _
-        frameRightMargin
+    desiredFormInsideWidth = fraItems.Left + desiredFrameInsideWidth + frameChromeWidth + frameRightMargin
 
-    If desiredFormInsideWidth < _
-            UI_PICKER_MIN_INSIDE_WIDTH Then
+    If desiredFormInsideWidth < UI_PICKER_MIN_INSIDE_WIDTH Then
+        desiredFormInsideWidth = UI_PICKER_MIN_INSIDE_WIDTH
+    End If
 
-        desiredFormInsideWidth = _
-            UI_PICKER_MIN_INSIDE_WIDTH
+    If mAllowMultipleSelection Then
+
+        minimumFooterInsideWidth = fraItems.Left + MeasureSelectionStatusWidth() + _
+            UI_PICKER_FOOTER_GAP + cmdConfirm.Width + frameRightMargin
+
+        If desiredFormInsideWidth < minimumFooterInsideWidth Then
+            desiredFormInsideWidth = minimumFooterInsideWidth
+        End If
 
     End If
 
-    maximumFormInsideWidth = _
-        Application.Width _
-        - formChromeWidth _
-        - (UI_PICKER_WINDOW_MARGIN * 2)
+    maximumFormInsideWidth = Application.Width - formChromeWidth - (UI_PICKER_WINDOW_MARGIN * 2)
 
-    If maximumFormInsideWidth < _
-            UI_PICKER_MIN_INSIDE_WIDTH Then
-
-        maximumFormInsideWidth = _
-            UI_PICKER_MIN_INSIDE_WIDTH
-
+    If maximumFormInsideWidth < UI_PICKER_MIN_INSIDE_WIDTH Then
+        maximumFormInsideWidth = UI_PICKER_MIN_INSIDE_WIDTH
     End If
 
-    If desiredFormInsideWidth > _
-            maximumFormInsideWidth Then
-
-        desiredFormInsideWidth = _
-            maximumFormInsideWidth
-
+    If desiredFormInsideWidth > maximumFormInsideWidth Then
+        desiredFormInsideWidth = maximumFormInsideWidth
     End If
 
-    Me.Width = _
-        desiredFormInsideWidth + _
-        formChromeWidth
+    Me.Width = desiredFormInsideWidth + formChromeWidth
 
-    '----------------------------------------------------
-    ' HORIZONTAL CONTROLS
-    '----------------------------------------------------
-    fraItems.Width = _
-        Me.InsideWidth _
-        - fraItems.Left _
-        - frameRightMargin
+    fraItems.Width = Me.InsideWidth - fraItems.Left - frameRightMargin
+    txtSearch.Width = Me.InsideWidth - txtSearch.Left - searchRightMargin
+    lblTitle.Width = Me.InsideWidth - lblTitle.Left - titleRightMargin
+    lblPath.Width = Me.InsideWidth - lblPath.Left - pathRightMargin
 
-    txtSearch.Width = _
-        Me.InsideWidth _
-        - txtSearch.Left _
-        - searchRightMargin
-
-    lblTitle.Width = _
-        Me.InsideWidth _
-        - lblTitle.Left _
-        - titleRightMargin
-
-    lblPath.Width = _
-        Me.InsideWidth _
-        - lblPath.Left _
-        - pathRightMargin
-
-    '----------------------------------------------------
-    ' BREADCRUMB
-    '----------------------------------------------------
     ResizeBreadcrumbLayout
+    PositionSelectionStatus
 
-    '----------------------------------------------------
-    ' FINAL FORM HEIGHT
-    '----------------------------------------------------
-    desiredClientHeight = _
-        fraItems.Top + _
-        fraItems.Height + _
-        UI_PICKER_BOTTOM_MARGIN
+    If mAllowMultipleSelection Then
 
-    Me.Height = _
-        desiredClientHeight + _
-        formChromeHeight
+        footerBottom = mSelectionStatus.Top + mSelectionStatus.Height
+
+        If cmdConfirm.Top + cmdConfirm.Height > footerBottom Then
+            footerBottom = cmdConfirm.Top + cmdConfirm.Height
+        End If
+
+        desiredClientHeight = footerBottom + UI_PICKER_BOTTOM_MARGIN
+
+    Else
+
+        desiredClientHeight = fraItems.Top + fraItems.Height + UI_PICKER_BOTTOM_MARGIN
+
+    End If
+
+    Me.Height = desiredClientHeight + formChromeHeight
 
 End Sub
-
-
 Private Sub ResizeBreadcrumbLayout()
 
     Dim originalPathHeight As Single
     Dim requiredPathHeight As Single
-
     Dim pathToSearchGap As Single
     Dim searchToPanelGap As Single
 
-    originalPathHeight = _
-        lblPath.Height
+    originalPathHeight = lblPath.Height
 
-    pathToSearchGap = _
-        txtSearch.Top _
-        - (lblPath.Top + lblPath.Height)
+    pathToSearchGap = txtSearch.Top - (lblPath.Top + lblPath.Height)
+    searchToPanelGap = fraItems.Top - (txtSearch.Top + txtSearch.Height)
 
-    searchToPanelGap = _
-        fraItems.Top _
-        - (txtSearch.Top + txtSearch.Height)
+    requiredPathHeight = MeasureWrappedBreadcrumbHeight(lblPath.Caption, lblPath.Width)
 
-    requiredPathHeight = _
-        MeasureWrappedBreadcrumbHeight( _
-            lblPath.Caption, _
-            lblPath.Width)
-
-    If requiredPathHeight < _
-            originalPathHeight Then
-
-        requiredPathHeight = _
-            originalPathHeight
-
+    If requiredPathHeight < originalPathHeight Then
+        requiredPathHeight = originalPathHeight
     End If
 
-    lblPath.Height = _
-        requiredPathHeight
-
-    txtSearch.Top = _
-        lblPath.Top + _
-        lblPath.Height + _
-        pathToSearchGap
+    lblPath.Height = requiredPathHeight
+    txtSearch.Top = lblPath.Top + lblPath.Height + pathToSearchGap
 
     PositionSearchHint
 
-    fraItems.Top = _
-        txtSearch.Top + _
-        txtSearch.Height + _
-        searchToPanelGap
+    fraItems.Top = txtSearch.Top + txtSearch.Height + searchToPanelGap
 
 End Sub
 
@@ -1166,30 +1268,37 @@ Private Sub PositionSearchHint()
 
     With lblSearchHint
 
-        .Left = _
-            txtSearch.Left
-
-        .Top = _
-            txtSearch.Top
-
-        .Width = _
-            txtSearch.Width
-
-        .Height = _
-            txtSearch.Height
-
-        .TextAlign = _
-            fmTextAlignCenter
+        .Left = txtSearch.Left
+        .Top = txtSearch.Top
+        .Width = txtSearch.Width
+        .Height = txtSearch.Height
+        .TextAlign = fmTextAlignCenter
 
     End With
 
 End Sub
 
 
+Private Sub PositionSelectionStatus()
+
+    If mSelectionStatus Is Nothing Then Exit Sub
+
+    cmdConfirm.Left = fraItems.Left + fraItems.Width - cmdConfirm.Width
+    cmdConfirm.Top = fraItems.Top + fraItems.Height + UI_PICKER_FOOTER_GAP
+
+    With mSelectionStatus
+
+        .Left = fraItems.Left
+        .Width = cmdConfirm.Left - UI_PICKER_FOOTER_GAP - .Left
+        .Height = UI_STATUS_HEIGHT
+        .Top = cmdConfirm.Top + ((cmdConfirm.Height - .Height) / 2)
+
+    End With
+
+End Sub
 Private Sub UpdateSearchHint()
 
-    lblSearchHint.Visible = _
-        (Len(txtSearch.value) = 0)
+    lblSearchHint.Visible = (Len(txtSearch.value) = 0)
 
 End Sub
 
@@ -1198,76 +1307,121 @@ End Sub
 ' MEASUREMENT AND DISPLAY HELPERS
 '============================================================
 
+Private Function MeasureSelectionStatusWidth() As Single
+
+    Dim measureLabel As MSForms.Label
+    Dim statusTexts As Variant
+    Dim statusText As Variant
+    Dim maximumWidth As Single
+    Dim savedErrNumber As Long
+    Dim savedErrDescription As String
+
+    On Error GoTo Fail
+
+    Set measureLabel = Me.Controls.Add("Forms.Label.1", "lblSelectionStatusMeasureTemp", True)
+
+    With measureLabel
+
+        .Visible = False
+        .AutoSize = True
+        .WordWrap = False
+        .Font.Name = UI_FONT
+        .Font.Size = UI_STATUS_FONT_SIZE
+        .Font.Bold = False
+
+    End With
+
+    statusTexts = Array(CStr(mValues.Count) & " Entries Selected", STATUS_MULTIPLE_BRANCHES, STATUS_IDENTITY_UNAVAILABLE)
+
+    For Each statusText In statusTexts
+
+        measureLabel.Caption = CStr(statusText)
+
+        If measureLabel.Width > maximumWidth Then
+            maximumWidth = measureLabel.Width
+        End If
+
+    Next statusText
+
+    MeasureSelectionStatusWidth = maximumWidth + UI_ITEM_PANEL_PADDING
+
+Cleanup:
+
+    If Not measureLabel Is Nothing Then
+        Me.Controls.Remove measureLabel.Name
+    End If
+
+    Exit Function
+
+Fail:
+
+    savedErrNumber = Err.Number
+    savedErrDescription = Err.description
+
+    On Error Resume Next
+
+    If Not measureLabel Is Nothing Then
+        Me.Controls.Remove measureLabel.Name
+    End If
+
+    On Error GoTo 0
+
+    Err.Raise savedErrNumber, "frmPicker.MeasureSelectionStatusWidth", savedErrDescription
+
+End Function
+
+
+' A temporary AutoSize label measures wrapped breadcrumb height because a fixed-width WordWrap label does not report it reliably.
 Private Function MeasureWrappedBreadcrumbHeight( _
     ByVal textValue As String, _
     ByVal maximumWidth As Single _
 ) As Single
 
     Dim measureLabel As MSForms.Label
-
     Dim remainingText As String
     Dim candidateText As String
-
     Dim fitLength As Long
     Dim breakPosition As Long
     Dim characterIndex As Long
     Dim lineCount As Long
-
     Dim lineHeight As Single
-
     Dim savedErrNumber As Long
     Dim savedErrDescription As String
 
     On Error GoTo Fail
 
     ' Edge Case Defense:
-    ' Remove stale measuring control if previous cleanup was interrupted.
+    ' A stale temporary measuring control can remain after an interrupted cleanup.
     On Error Resume Next
-
-    Me.Controls.Remove _
-        "lblBreadcrumbMeasureTemp"
-
+    Me.Controls.Remove "lblBreadcrumbMeasureTemp"
     On Error GoTo Fail
 
-    Set measureLabel = _
-        Me.Controls.Add( _
-            "Forms.Label.1", _
-            "lblBreadcrumbMeasureTemp", _
-            True)
+    Set measureLabel = Me.Controls.Add( _
+        "Forms.Label.1", _
+        "lblBreadcrumbMeasureTemp", _
+        True)
 
     With measureLabel
 
         .Visible = False
-
         .AutoSize = True
         .WordWrap = False
-
-        .Font.Name = _
-            lblPath.Font.Name
-
-        .Font.Size = _
-            lblPath.Font.Size
-
-        .Font.Bold = _
-            lblPath.Font.Bold
+        .Font.Name = lblPath.Font.Name
+        .Font.Size = lblPath.Font.Size
+        .Font.Bold = lblPath.Font.Bold
 
     End With
 
-    measureLabel.Caption = _
-        "Ag"
+    measureLabel.Caption = "Ag"
 
-    lineHeight = _
-        measureLabel.Height
-
-    remainingText = _
-        Trim$(textValue)
+    lineHeight = measureLabel.Height
+    remainingText = Trim$(textValue)
 
     If Len(remainingText) = 0 Then
 
-        MeasureWrappedBreadcrumbHeight = _
-            lineHeight
+        MeasureWrappedBreadcrumbHeight = lineHeight
 
-        GoTo CleanUp
+        GoTo Cleanup
 
     End If
 
@@ -1275,81 +1429,50 @@ Private Function MeasureWrappedBreadcrumbHeight( _
 
         fitLength = 0
 
-        For characterIndex = _
-                1 To Len(remainingText)
+        For characterIndex = 1 To Len(remainingText)
 
-            candidateText = _
-                Left$( _
-                    remainingText, _
-                    characterIndex)
+            candidateText = Left$(remainingText, characterIndex)
+            measureLabel.Caption = candidateText
 
-            measureLabel.Caption = _
-                candidateText
-
-            If measureLabel.Width <= _
-                    maximumWidth Then
-
-                fitLength = _
-                    characterIndex
-
+            If measureLabel.Width <= maximumWidth Then
+                fitLength = characterIndex
             Else
-
                 Exit For
-
             End If
 
         Next characterIndex
 
-        If fitLength >= _
-                Len(remainingText) Then
+        If fitLength >= Len(remainingText) Then
 
-            lineCount = _
-                lineCount + 1
+            lineCount = lineCount + 1
 
             Exit Do
 
         End If
 
         ' Edge Case Defense:
-        ' Force at least one character onto the line.
-        If fitLength < 1 Then
-            fitLength = 1
-        End If
+        ' At least one character must be assigned to each measured line.
+        If fitLength < 1 Then fitLength = 1
 
-        ' Prefer breaking on spaces to splitting words.
-        breakPosition = _
-            InStrRev( _
-                Left$( _
-                    remainingText, _
-                    fitLength), _
-                " ")
+        breakPosition = InStrRev(Left$(remainingText, fitLength), " ")
 
         If breakPosition > 1 Then
-            fitLength = _
-                breakPosition - 1
+            fitLength = breakPosition - 1
         End If
 
-        lineCount = _
-            lineCount + 1
-
-        remainingText = _
-            LTrim$( _
-                Mid$( _
-                    remainingText, _
-                    fitLength + 1))
+        lineCount = lineCount + 1
+        remainingText = LTrim$(Mid$(remainingText, fitLength + 1))
 
     Loop
 
-    MeasureWrappedBreadcrumbHeight = _
-        lineCount * lineHeight
+    MeasureWrappedBreadcrumbHeight = lineCount * lineHeight
 
-CleanUp:
+Cleanup:
 
     On Error Resume Next
 
     If Not measureLabel Is Nothing Then
-        Me.Controls.Remove _
-            measureLabel.Name
+        Me.Controls.Remove measureLabel.Name
     End If
 
     On Error GoTo 0
@@ -1358,157 +1481,121 @@ CleanUp:
 
 Fail:
 
-    savedErrNumber = _
-        Err.Number
-
-    savedErrDescription = _
-        Err.Description
+    savedErrNumber = Err.Number
+    savedErrDescription = Err.description
 
     On Error Resume Next
 
     If Not measureLabel Is Nothing Then
-        Me.Controls.Remove _
-            measureLabel.Name
+        Me.Controls.Remove measureLabel.Name
     End If
 
     On Error GoTo 0
 
-    Err.Raise _
-        savedErrNumber, _
-        "frmPicker.MeasureWrappedBreadcrumbHeight", _
-        savedErrDescription
+    Err.Raise savedErrNumber, "frmPicker.MeasureWrappedBreadcrumbHeight", savedErrDescription
 
 End Function
 
 
-Private Function MeasureLongestItemWidth( _
-    ByVal values As Collection _
-) As Single
+Private Function MeasureLongestItemWidth(ByVal values As Collection) As Single
 
     Dim measureLabel As MSForms.Label
-
     Dim item As Variant
     Dim itemText As String
-
+    Dim itemKey As String
     Dim maximumWidth As Single
-
     Dim savedErrNumber As Long
     Dim savedErrDescription As String
 
     On Error GoTo Fail
 
-    Set measureLabel = _
-        Me.Controls.Add( _
-            "Forms.Label.1", _
-            "lblMeasureTemp", _
-            True)
+    Set measureLabel = Me.Controls.Add( _
+        "Forms.Label.1", _
+        "lblMeasureTemp", _
+        True)
 
     With measureLabel
 
         .Visible = False
-
         .AutoSize = True
         .WordWrap = False
-
-        .Font.Name = _
-            UI_FONT
-
-        .Font.Size = _
-            UI_ITEM_FONT_SIZE
+        .Font.Name = UI_FONT
+        .Font.Size = UI_ITEM_FONT_SIZE
 
     End With
 
-    maximumWidth = 0
-
     For Each item In values
 
-        itemText = _
-            GetPickerItemDisplayText(item)
+        ResolvePickerItem item, itemText, itemKey
 
-        ' Match the leading spacing used by BuildItems.
-        measureLabel.Caption = _
-            "   " & itemText
+        measureLabel.Caption = "   " & itemText
 
-        If measureLabel.Width > _
-                maximumWidth Then
-
-            maximumWidth = _
-                measureLabel.Width
-
+        If measureLabel.Width > maximumWidth Then
+            maximumWidth = measureLabel.Width
         End If
 
     Next item
 
-    MeasureLongestItemWidth = _
-        maximumWidth
+    MeasureLongestItemWidth = maximumWidth
 
-CleanUp:
+Cleanup:
 
     If Not measureLabel Is Nothing Then
-        Me.Controls.Remove _
-            measureLabel.Name
+        Me.Controls.Remove measureLabel.Name
     End If
 
     Exit Function
 
 Fail:
 
-    savedErrNumber = _
-        Err.Number
-
-    savedErrDescription = _
-        Err.Description
+    savedErrNumber = Err.Number
+    savedErrDescription = Err.description
 
     On Error Resume Next
 
     If Not measureLabel Is Nothing Then
-        Me.Controls.Remove _
-            measureLabel.Name
+        Me.Controls.Remove measureLabel.Name
     End If
 
     On Error GoTo 0
 
-    Err.Raise _
-        savedErrNumber, _
-        "frmPicker.MeasureLongestItemWidth", _
-        savedErrDescription
+    Err.Raise savedErrNumber, "frmPicker.MeasureLongestItemWidth", savedErrDescription
 
 End Function
 
 
-Private Function GetPickerItemDisplayText( _
-    ByVal item As Variant _
-) As String
+Private Sub ResolvePickerItem( _
+    ByVal item As Variant, _
+    ByRef itemText As String, _
+    ByRef itemKey As String _
+)
 
     Dim node As clsTestNode
 
+    itemText = vbNullString
+    itemKey = vbNullString
+
     If IsObject(item) Then
 
-        If TypeName(item) = _
-                "clsTestNode" Then
-
-            Set node = _
-                item
-
-            GetPickerItemDisplayText = _
-                node.Label
-
-        Else
+        If TypeName(item) <> "clsTestNode" Then
 
             Err.Raise _
-                vbObjectError + 1810, _
-                "frmPicker.GetPickerItemDisplayText", _
-                "Unsupported picker object type '" & _
-                TypeName(item) & "'."
+                vbObjectError + 1800, _
+                "frmPicker.ResolvePickerItem", _
+                "Unsupported picker object type '" & TypeName(item) & "'."
 
         End If
 
+        Set node = item
+
+        itemText = node.Label
+        itemKey = node.nodeID
+
     Else
 
-        GetPickerItemDisplayText = _
-            CStr(item)
+        itemText = CStr(item)
 
     End If
 
-End Function
+End Sub
 
