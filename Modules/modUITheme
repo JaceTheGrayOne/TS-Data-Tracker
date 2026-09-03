@@ -16,13 +16,14 @@ Public Const UI_SEARCH_FONT_SIZE As Single = 10
 Public Const UI_ITEM_FONT_SIZE As Single = 9.5
 Public Const UI_BUTTON_FONT_SIZE As Single = 9
 Public Const UI_CHECK_FONT_SIZE As Single = 11
+Public Const UI_STATUS_FONT_SIZE As Single = 8.5
 
 
 '============================================================
 ' INTERACTION
 '============================================================
 
-' 0 = unchanged; 1 = fully white.
+' 0 = unchanged and 1 = fully white.
 Public Const UI_HOVER_LIGHTEN As Double = 0.07
 
 Public Const UI_ACCENT_DARKEN As Double = 0.28
@@ -39,6 +40,7 @@ Public Const UI_ITEM_PANEL_PADDING As Single = 6
 
 Public Const UI_ACCENT_WIDTH As Single = 4
 Public Const UI_CHECK_WIDTH As Single = 22
+Public Const UI_STATUS_HEIGHT As Single = 14
 
 
 '============================================================
@@ -48,10 +50,10 @@ Public Const UI_CHECK_WIDTH As Single = 22
 Public Const UI_PICKER_MIN_VISIBLE_ITEMS As Long = 3
 Public Const UI_PICKER_MAX_VISIBLE_ITEMS As Long = 10
 
-Public Const UI_PICKER_FOOTER_GAP As Single = 10
+Public Const UI_PICKER_FOOTER_GAP As Single = 6
 Public Const UI_PICKER_BOTTOM_MARGIN As Single = 12
 
-' Prevent short lists from producing an impractically narrow form.
+' Short lists retain enough width for practical search and navigation.
 Public Const UI_PICKER_MIN_INSIDE_WIDTH As Single = 140
 
 Public Const UI_PICKER_WINDOW_MARGIN As Single = 24
@@ -68,64 +70,70 @@ Public Const UI_SEARCH_HINT_TOP_INSET As Single = 2
 
 Public Function UIColor_FormBackground() As Long
 
-    UIColor_FormBackground = _
-        RGB(48, 53, 59)
+    UIColor_FormBackground = RGB(48, 53, 59)
 
 End Function
 
 
 Public Function UIColor_PanelBackground() As Long
 
-    UIColor_PanelBackground = _
-        RGB(58, 64, 71)
+    UIColor_PanelBackground = RGB(58, 64, 71)
 
 End Function
 
 
 Public Function UIColor_InputBackground() As Long
 
-    UIColor_InputBackground = _
-        RGB(68, 75, 83)
+    UIColor_InputBackground = RGB(68, 75, 83)
 
 End Function
 
 
 Public Function UIColor_InputBorder() As Long
 
-    UIColor_InputBorder = _
-        RGB(103, 112, 122)
+    UIColor_InputBorder = RGB(103, 112, 122)
 
 End Function
 
 
 Public Function UIColor_TextPrimary() As Long
 
-    UIColor_TextPrimary = _
-        RGB(244, 246, 248)
+    UIColor_TextPrimary = RGB(244, 246, 248)
 
 End Function
 
 
 Public Function UIColor_TextMuted() As Long
 
-    UIColor_TextMuted = _
-        RGB(185, 192, 200)
+    UIColor_TextMuted = RGB(185, 192, 200)
 
 End Function
 
 
 Public Function UIColor_ButtonBackground() As Long
 
-    UIColor_ButtonBackground = _
-        RGB(69, 76, 84)
+    UIColor_ButtonBackground = UIColor_InputBackground()
 
 End Function
 
 
 Public Function UIColor_ButtonText() As Long
 
-    UIColor_ButtonText = _
-        RGB(242, 244, 247)
+    UIColor_ButtonText = UIColor_TextPrimary()
+
+End Function
+
+
+Public Function UIColor_SelectionBorder() As Long
+
+    UIColor_SelectionBorder = RGB(82, 196, 120)
+
+End Function
+
+
+Public Function UIColor_StatusError() As Long
+
+    UIColor_StatusError = RGB(239, 103, 103)
 
 End Function
 
@@ -136,24 +144,21 @@ End Function
 
 Public Function UIColor_ItemBackground() As Long
 
-    UIColor_ItemBackground = _
-        RGB(72, 79, 87)
+    UIColor_ItemBackground = RGB(72, 79, 87)
 
 End Function
 
 
 Public Function UIColor_ItemBorder() As Long
 
-    UIColor_ItemBorder = _
-        RGB(102, 111, 121)
+    UIColor_ItemBorder = UIColor_InputBorder()
 
 End Function
 
 
 Public Function UIColor_ItemText() As Long
 
-    UIColor_ItemText = _
-        RGB(240, 243, 246)
+    UIColor_ItemText = UIColor_TextPrimary()
 
 End Function
 
@@ -165,7 +170,7 @@ End Function
 Public Sub ApplyUIPickerTheme( _
     ByVal lbl As MSForms.Label, _
     ByVal fieldName As String, _
-    ByVal ItemValue As String _
+    ByVal itemValue As String _
 )
 
     Dim fillColor As Long
@@ -175,46 +180,22 @@ Public Sub ApplyUIPickerTheme( _
     '----------------------------------------------------
     ' DEFAULT APPEARANCE
     '----------------------------------------------------
-    lbl.BackColor = _
-        UIColor_ItemBackground()
-
-    lbl.ForeColor = _
-        UIColor_ItemText()
-
-    lbl.BorderColor = _
-        UIColor_ItemBorder()
-
-    lbl.Font.Name = _
-        UI_FONT
-
-    lbl.Font.Size = _
-        UI_ITEM_FONT_SIZE
-
-    lbl.Font.Bold = _
-        False
+    lbl.BackColor = UIColor_ItemBackground()
+    lbl.ForeColor = UIColor_ItemText()
+    lbl.BorderColor = UIColor_ItemBorder()
+    lbl.Font.Name = UI_FONT
+    lbl.Font.Size = UI_ITEM_FONT_SIZE
+    lbl.Font.Bold = False
 
     '----------------------------------------------------
     ' SEMANTIC COLOR OVERRIDE
     '----------------------------------------------------
-    ' tbl_Theme controls picker color, but Bold is intentionally
-    ' reserved for worksheet-cell theming.
-    If TryGetTheme( _
-            fieldName, _
-            ItemValue, _
-            fillColor, _
-            textColor, _
-            isBold) Then
+    ' Picker typography deliberately ignores worksheet Bold theme rules.
+    If TryGetTheme(fieldName, itemValue, fillColor, textColor, isBold) Then
 
-        lbl.BackColor = _
-            fillColor
-
-        lbl.ForeColor = _
-            textColor
-
-        lbl.BorderColor = _
-            UIDarkenColor( _
-                fillColor, _
-                UI_THEME_BORDER_DARKEN)
+        lbl.BackColor = fillColor
+        lbl.ForeColor = textColor
+        lbl.BorderColor = UIDarkenColor(fillColor, UI_THEME_BORDER_DARKEN)
 
     End If
 
@@ -225,30 +206,16 @@ End Sub
 ' COLOR UTILITIES
 '============================================================
 
-Public Function UILightenColor( _
-    ByVal sourceColor As Long, _
-    ByVal amount As Double _
-) As Long
+Public Function UILightenColor(ByVal sourceColor As Long, ByVal amount As Double) As Long
 
-    UILightenColor = _
-        UIBlendColor( _
-            sourceColor, _
-            RGB(255, 255, 255), _
-            amount)
+    UILightenColor = UIBlendColor(sourceColor, RGB(255, 255, 255), amount)
 
 End Function
 
 
-Public Function UIDarkenColor( _
-    ByVal sourceColor As Long, _
-    ByVal amount As Double _
-) As Long
+Public Function UIDarkenColor(ByVal sourceColor As Long, ByVal amount As Double) As Long
 
-    UIDarkenColor = _
-        UIBlendColor( _
-            sourceColor, _
-            RGB(0, 0, 0), _
-            amount)
+    UIDarkenColor = UIBlendColor(sourceColor, RGB(0, 0, 0), amount)
 
 End Function
 
@@ -272,58 +239,24 @@ Private Function UIBlendColor( _
     Dim resultB As Long
 
     ' Edge Case Defense:
-    ' Clamp blend factor to the valid interpolation range.
-    If amount < 0 Then
-        amount = 0
-    End If
+    ' Public color helpers accept arbitrary blend amounts.
+    If amount < 0 Then amount = 0
+    If amount > 1 Then amount = 1
 
-    If amount > 1 Then
-        amount = 1
-    End If
+    ' VBA RGB stores channels as BGR within the Long value.
+    sourceR = sourceColor And &HFF&
+    sourceG = (sourceColor \ &H100&) And &HFF&
+    sourceB = (sourceColor \ &H10000) And &HFF&
 
-    ' VBA RGB() stores channels as BGR within the Long value.
-    sourceR = _
-        sourceColor And &HFF&
+    targetR = targetColor And &HFF&
+    targetG = (targetColor \ &H100&) And &HFF&
+    targetB = (targetColor \ &H10000) And &HFF&
 
-    sourceG = _
-        (sourceColor \ &H100&) _
-        And &HFF&
+    resultR = CLng(sourceR + ((targetR - sourceR) * amount))
+    resultG = CLng(sourceG + ((targetG - sourceG) * amount))
+    resultB = CLng(sourceB + ((targetB - sourceB) * amount))
 
-    sourceB = _
-        (sourceColor \ &H10000) _
-        And &HFF&
-
-    targetR = _
-        targetColor And &HFF&
-
-    targetG = _
-        (targetColor \ &H100&) _
-        And &HFF&
-
-    targetB = _
-        (targetColor \ &H10000) _
-        And &HFF&
-
-    resultR = _
-        CLng( _
-            sourceR + _
-            ((targetR - sourceR) * amount))
-
-    resultG = _
-        CLng( _
-            sourceG + _
-            ((targetG - sourceG) * amount))
-
-    resultB = _
-        CLng( _
-            sourceB + _
-            ((targetB - sourceB) * amount))
-
-    UIBlendColor = _
-        RGB( _
-            resultR, _
-            resultG, _
-            resultB)
+    UIBlendColor = RGB(resultR, resultG, resultB)
 
 End Function
 
