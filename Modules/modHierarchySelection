@@ -1,0 +1,507 @@
+Option Explicit
+
+
+'============================================================
+' TEXT HANDLING
+'============================================================
+
+Public Function GetHierarchySelectionLines(ByVal sourceText As String) As Collection
+
+    Dim result As Collection
+    Dim rawLines As Variant
+    Dim rawLine As Variant
+    Dim normalizedText As String
+    Dim lineText As String
+
+    Set result = New Collection
+
+    normalizedText = Replace(sourceText, vbCrLf, vbLf)
+    normalizedText = Replace(normalizedText, vbCr, vbLf)
+
+    If Len(normalizedText) = 0 Then
+        Set GetHierarchySelectionLines = result
+        Exit Function
+    End If
+
+    rawLines = Split(normalizedText, vbLf)
+
+    For Each rawLine In rawLines
+
+        lineText = Trim$(CStr(rawLine))
+
+        If Len(lineText) > 0 Then
+            result.Add lineText
+        End If
+
+    Next rawLine
+
+    Set GetHierarchySelectionLines = result
+
+End Function
+
+
+Public Function JoinHierarchySelectionLines(ByVal values As Collection) As String
+
+    Dim item As Variant
+    Dim itemText As String
+    Dim result As String
+
+    If values Is Nothing Then Exit Function
+
+    For Each item In values
+
+        itemText = Trim$(CStr(item))
+
+        If Len(itemText) > 0 Then
+
+            If Len(result) > 0 Then
+                result = result & vbLf
+            End If
+
+            result = result & itemText
+
+        End If
+
+    Next item
+
+    JoinHierarchySelectionLines = result
+
+End Function
+
+
+Public Function HierarchySelectionLineCount(ByVal sourceText As String) As Long
+
+    Dim lines As Collection
+
+    Set lines = GetHierarchySelectionLines(sourceText)
+
+    HierarchySelectionLineCount = lines.Count
+
+End Function
+
+
+Public Function FormatHierarchySelectionForDisplay(ByVal sourceText As String) As String
+
+    Dim lines As Collection
+    Dim lineValue As Variant
+    Dim result As String
+
+    Set lines = GetHierarchySelectionLines(sourceText)
+
+    For Each lineValue In lines
+
+        If Len(result) > 0 Then
+            result = result & " + "
+        End If
+
+        result = result & CStr(lineValue)
+
+    Next lineValue
+
+    FormatHierarchySelectionForDisplay = result
+
+End Function
+
+
+'============================================================
+' BRANCH RESOLUTION
+'============================================================
+
+Public Function HierarchyItemHasChildren( _
+    ByVal fieldName As String, _
+    ByVal itemValue As String, _
+    ByVal itemNodeID As String _
+) As Boolean
+
+    Dim childField As String
+    Dim roots As Collection
+
+    itemNodeID = Trim$(itemNodeID)
+
+    If Len(itemNodeID) > 0 Then
+
+        HierarchyItemHasChildren = HasChildNodes(itemNodeID)
+
+        Exit Function
+
+    End If
+
+    childField = NextField(fieldName)
+
+    If Len(childField) = 0 Then Exit Function
+
+    If StrComp(Trim$(fieldName), "Test", vbTextCompare) = 0 Then
+
+        Set roots = GetRootNodes(Trim$(itemValue))
+
+        If roots.Count > 0 Then
+
+            HierarchyItemHasChildren = True
+
+            Exit Function
+
+        End If
+
+    End If
+
+    HierarchyItemHasChildren = (GetChildState(fieldName, itemValue, childField) = csRouted)
+
+End Function
+
+
+Public Function TryGetHierarchyBranchSelection( _
+    ByVal fieldName As String, _
+    ByVal selectedValues As String, _
+    ByVal selectedNodeIDs As String, _
+    ByRef branchValue As String, _
+    ByRef branchNodeID As String, _
+    ByRef branchCount As Long _
+) As Boolean
+
+    Dim values As Collection
+    Dim nodeIDs As Collection
+    Dim node As clsTestNode
+    Dim itemValue As String
+    Dim itemNodeID As String
+    Dim itemIndex As Long
+
+    branchValue = vbNullString
+    branchNodeID = vbNullString
+    branchCount = 0
+
+    Set values = GetHierarchySelectionLines(selectedValues)
+    Set nodeIDs = GetHierarchySelectionLines(selectedNodeIDs)
+
+    If values.Count = 0 Then
+
+        If nodeIDs.Count > 0 Then Exit Function
+
+        TryGetHierarchyBranchSelection = True
+
+        Exit Function
+
+    End If
+
+    If nodeIDs.Count > 0 Then
+
+        If nodeIDs.Count <> values.Count Then Exit Function
+
+        For itemIndex = 1 To values.Count
+
+            itemValue = CStr(values(itemIndex))
+            itemNodeID = CStr(nodeIDs(itemIndex))
+
+            Set node = GetNodeByID(itemNodeID)
+
+            If node Is Nothing Then Exit Function
+            If StrComp(node.Label, itemValue, vbTextCompare) <> 0 Then Exit Function
+
+            If HasChildNodes(node.nodeID) Then
+
+                branchCount = branchCount + 1
+                branchValue = node.Label
+                branchNodeID = node.nodeID
+
+            End If
+
+        Next itemIndex
+
+    Else
+
+        For itemIndex = 1 To values.Count
+
+            itemValue = CStr(values(itemIndex))
+
+            If HierarchyItemHasChildren(fieldName, itemValue, vbNullString) Then
+
+                branchCount = branchCount + 1
+                branchValue = itemValue
+                branchNodeID = vbNullString
+
+            End If
+
+        Next itemIndex
+
+    End If
+
+    TryGetHierarchyBranchSelection = True
+
+End Function
+
+
+Public Function HierarchyBranchSelectionsMatch( _
+    ByVal fieldName As String, _
+    ByVal firstValues As String, _
+    ByVal firstNodeIDs As String, _
+    ByVal secondValues As String, _
+    ByVal secondNodeIDs As String _
+) As Boolean
+
+    Dim firstBranchValue As String
+    Dim firstBranchNodeID As String
+    Dim secondBranchValue As String
+    Dim secondBranchNodeID As String
+    Dim firstBranchCount As Long
+    Dim secondBranchCount As Long
+
+    If Not TryGetHierarchyBranchSelection( _
+            fieldName, _
+            firstValues, _
+            firstNodeIDs, _
+            firstBranchValue, _
+            firstBranchNodeID, _
+            firstBranchCount) Then Exit Function
+
+    If Not TryGetHierarchyBranchSelection( _
+            fieldName, _
+            secondValues, _
+            secondNodeIDs, _
+            secondBranchValue, _
+            secondBranchNodeID, _
+            secondBranchCount) Then Exit Function
+
+    If firstBranchCount <> 1 Or secondBranchCount <> 1 Then Exit Function
+
+    If Len(firstBranchNodeID) > 0 And Len(secondBranchNodeID) > 0 Then
+
+        HierarchyBranchSelectionsMatch = (StrComp( _
+            firstBranchNodeID, _
+            secondBranchNodeID, _
+            vbTextCompare) = 0)
+
+    Else
+
+        HierarchyBranchSelectionsMatch = (StrComp( _
+            firstBranchValue, _
+            secondBranchValue, _
+            vbTextCompare) = 0)
+
+    End If
+
+End Function
+
+
+'============================================================
+' SET COMPARISON
+'============================================================
+
+Public Function HierarchySelectionOverlap( _
+    ByVal firstValues As String, _
+    ByVal firstNodeIDs As String, _
+    ByVal secondValues As String, _
+    ByVal secondNodeIDs As String _
+) As Double
+
+    Dim firstValueLines As Collection
+    Dim firstIDLines As Collection
+    Dim secondValueLines As Collection
+    Dim secondIDLines As Collection
+    Dim firstSet As Object
+    Dim secondSet As Object
+    Dim itemKey As Variant
+    Dim sharedCount As Long
+    Dim unionCount As Long
+    Dim useNodeIDs As Boolean
+
+    Set firstValueLines = GetHierarchySelectionLines(firstValues)
+    Set firstIDLines = GetHierarchySelectionLines(firstNodeIDs)
+    Set secondValueLines = GetHierarchySelectionLines(secondValues)
+    Set secondIDLines = GetHierarchySelectionLines(secondNodeIDs)
+
+    useNodeIDs = SelectionHasCompleteNodeIDs(firstValueLines, firstIDLines) _
+        And SelectionHasCompleteNodeIDs(secondValueLines, secondIDLines)
+
+    If useNodeIDs Then
+
+        Set firstSet = BuildHierarchySelectionSet(firstIDLines)
+        Set secondSet = BuildHierarchySelectionSet(secondIDLines)
+
+    Else
+
+        Set firstSet = BuildHierarchySelectionSet(firstValueLines)
+        Set secondSet = BuildHierarchySelectionSet(secondValueLines)
+
+    End If
+
+    If firstSet.Count = 0 Or secondSet.Count = 0 Then Exit Function
+
+    For Each itemKey In firstSet.keys
+
+        If secondSet.Exists(CStr(itemKey)) Then
+            sharedCount = sharedCount + 1
+        End If
+
+    Next itemKey
+
+    unionCount = firstSet.Count + secondSet.Count - sharedCount
+
+    If unionCount > 0 Then
+        HierarchySelectionOverlap = sharedCount / unionCount
+    End If
+
+End Function
+
+
+'============================================================
+' WORKSHEET LAYOUT
+'============================================================
+
+Public Sub ApplyHierarchyRowLayout(ByVal ws As Worksheet, ByVal rowNumber As Long)
+
+    Dim columnNumber As Long
+    Dim lineCount As Long
+    Dim maximumLineCount As Long
+    Dim requiredHeight As Double
+    Dim cellValue As Variant
+    Dim targetCell As Range
+
+    maximumLineCount = 1
+
+    For columnNumber = fieldColumn("Test Step") To fieldColumn("Sub Step 4")
+
+        Set targetCell = ws.Cells(rowNumber, columnNumber)
+        cellValue = targetCell.value2
+
+        If IsError(cellValue) Or IsEmpty(cellValue) Then
+
+            targetCell.WrapText = False
+
+        Else
+
+            lineCount = HierarchySelectionLineCount(CStr(cellValue))
+            targetCell.WrapText = (lineCount > 1)
+
+            If lineCount > maximumLineCount Then
+                maximumLineCount = lineCount
+            End If
+
+        End If
+
+    Next columnNumber
+
+    requiredHeight = ws.StandardHeight * maximumLineCount
+
+    ' A generated multiline height may increase the row but never reduces an existing manual height.
+    If ws.Rows(rowNumber).RowHeight < requiredHeight Then
+        ws.Rows(rowNumber).RowHeight = requiredHeight
+    End If
+
+End Sub
+
+
+'============================================================
+' INTERNAL HELPERS
+'============================================================
+
+Private Function SelectionHasCompleteNodeIDs( _
+    ByVal values As Collection, _
+    ByVal nodeIDs As Collection _
+) As Boolean
+
+    SelectionHasCompleteNodeIDs = values.Count > 0 And nodeIDs.Count = values.Count
+
+End Function
+
+
+Private Function BuildHierarchySelectionSet(ByVal values As Collection) As Object
+
+    Dim result As Object
+    Dim item As Variant
+    Dim itemText As String
+
+    Set result = CreateObject("Scripting.Dictionary")
+    result.CompareMode = vbTextCompare
+
+    For Each item In values
+
+        itemText = Trim$(CStr(item))
+
+        If Len(itemText) > 0 And itemText <> "-" Then
+
+            If Not result.Exists(itemText) Then
+                result.Add itemText, True
+            End If
+
+        End If
+
+    Next item
+
+    Set BuildHierarchySelectionSet = result
+
+End Function
+
+
+'============================================================
+' TEST HARNESS
+'============================================================
+
+Public Sub TestHierarchySelectionEngine()
+
+    Dim branchValue As String
+    Dim branchNodeID As String
+    Dim branchCount As Long
+    Dim overlap As Double
+    Dim testPassed As Boolean
+
+    Debug.Print String$(70, "=")
+    Debug.Print "HIERARCHY SELECTION ENGINE TEST"
+    Debug.Print String$(70, "=")
+
+    testPassed = HierarchySelectionLineCount("One" & vbLf & "Two") = 2
+    PrintHierarchySelectionTest testPassed, "Line-delimited values parse into two entries."
+
+    overlap = HierarchySelectionOverlap( _
+        "Verify Bit Errors" & vbLf & "Verify Pattern Sync Loss", _
+        "TN-000865" & vbLf & "TN-000867", _
+        "Verify Pattern Sync Loss" & vbLf & "Verify Bit Errors", _
+        "TN-000867" & vbLf & "TN-000865")
+
+    PrintHierarchySelectionTest Abs(overlap - 1#) < 0.0001, _
+        "The same Node ID set in a different order is a full match."
+
+    overlap = HierarchySelectionOverlap( _
+        "Verify Bit Errors" & vbLf & "Verify Pattern Sync Loss", _
+        "TN-000865" & vbLf & "TN-000867", _
+        "Verify Bit Errors", _
+        "TN-000865")
+
+    PrintHierarchySelectionTest Abs(overlap - 0.5) < 0.0001, _
+        "A one-of-two Node ID overlap produces fifty percent credit."
+
+    testPassed = TryGetHierarchyBranchSelection( _
+        "Sub Step 1", _
+        "Noise Adjustment" & vbLf & "Set Nominal SNR", _
+        "TN-000851" & vbLf & "TN-000854", _
+        branchValue, _
+        branchNodeID, _
+        branchCount)
+
+    testPassed = testPassed And branchCount = 1 And branchNodeID = "TN-000851"
+    PrintHierarchySelectionTest testPassed, "One branch plus one leaf resolves one branch."
+
+    testPassed = TryGetHierarchyBranchSelection( _
+        "Sub Step 1", _
+        "Noise Adjustment" & vbLf & "Set Port SNR [1222]", _
+        "TN-000851" & vbLf & "TN-000855", _
+        branchValue, _
+        branchNodeID, _
+        branchCount)
+
+    testPassed = testPassed And branchCount = 2
+    PrintHierarchySelectionTest testPassed, "Two branch entries are detected."
+
+    Debug.Print String$(70, "=")
+
+End Sub
+
+
+Private Sub PrintHierarchySelectionTest(ByVal passed As Boolean, ByVal description As String)
+
+    If passed Then
+        Debug.Print "PASS  " & description
+    Else
+        Debug.Print "FAIL  " & description
+    End If
+
+End Sub
+
