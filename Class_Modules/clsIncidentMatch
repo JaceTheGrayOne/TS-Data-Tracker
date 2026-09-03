@@ -27,47 +27,16 @@ Private mDifferencesText As String
 ' PUBLIC INTERFACE
 '============================================================
 
-Public Sub Initialize( _
-    ByVal worksheetRow As Long, _
-    ByVal scoreValue As Long, _
-    ByVal evidenceCountValue As Long, _
-    ByVal matchLevelValue As String, _
-    ByVal dateTextValue As String, _
-    ByVal uutValue As String, _
-    ByVal serialNumberValue As String, _
-    ByVal testNameValue As String, _
-    ByVal testPathValue As String, _
-    ByVal faultTextValue As String, _
-    ByVal causeTextValue As String, _
-    ByVal resolutionTextValue As String, _
-    ByVal notesTextValue As String, _
-    ByVal reasonsTextValue As String, _
-    ByVal differencesTextValue As String _
-)
+Public Property Get WorksheetRow() As Long
 
-    mWorksheetRow = worksheetRow
-    mScore = scoreValue
-    mEvidenceCount = evidenceCountValue
+    WorksheetRow = mWorksheetRow
 
-    mMatchLevel = matchLevelValue
-    mDateText = dateTextValue
-    mUUT = uutValue
-    mSerialNumber = serialNumberValue
-    mTestName = testNameValue
-    mTestPath = testPathValue
-    mFaultText = faultTextValue
-    mCauseText = causeTextValue
-    mResolutionText = resolutionTextValue
-    mNotesText = notesTextValue
-    mReasonsText = reasonsTextValue
-    mDifferencesText = differencesTextValue
-
-End Sub
+End Property
 
 
-Public Property Get worksheetRow() As Long
+Public Property Let WorksheetRow(ByVal value As Long)
 
-    worksheetRow = mWorksheetRow
+    mWorksheetRow = value
 
 End Property
 
@@ -79,9 +48,23 @@ Public Property Get Score() As Long
 End Property
 
 
-Public Property Get evidenceCount() As Long
+Public Property Let Score(ByVal value As Long)
 
-    evidenceCount = mEvidenceCount
+    mScore = value
+
+End Property
+
+
+Public Property Get EvidenceCount() As Long
+
+    EvidenceCount = mEvidenceCount
+
+End Property
+
+
+Public Property Let EvidenceCount(ByVal value As Long)
+
+    mEvidenceCount = value
 
 End Property
 
@@ -93,9 +76,23 @@ Public Property Get MatchLevel() As String
 End Property
 
 
+Public Property Let MatchLevel(ByVal value As String)
+
+    mMatchLevel = value
+
+End Property
+
+
 Public Property Get DateText() As String
 
     DateText = mDateText
+
+End Property
+
+
+Public Property Let DateText(ByVal value As String)
+
+    mDateText = value
 
 End Property
 
@@ -107,16 +104,37 @@ Public Property Get UUT() As String
 End Property
 
 
-Public Property Get SerialNumber() As String
+Public Property Let UUT(ByVal value As String)
 
-    SerialNumber = mSerialNumber
+    mUUT = value
 
 End Property
 
 
-Public Property Get TestName() As String
+Public Property Get serialNumber() As String
 
-    TestName = mTestName
+    serialNumber = mSerialNumber
+
+End Property
+
+
+Public Property Let serialNumber(ByVal value As String)
+
+    mSerialNumber = value
+
+End Property
+
+
+Public Property Get testName() As String
+
+    testName = mTestName
+
+End Property
+
+
+Public Property Let testName(ByVal value As String)
+
+    mTestName = value
 
 End Property
 
@@ -128,9 +146,23 @@ Public Property Get TestPath() As String
 End Property
 
 
+Public Property Let TestPath(ByVal value As String)
+
+    mTestPath = value
+
+End Property
+
+
 Public Property Get FaultText() As String
 
     FaultText = mFaultText
+
+End Property
+
+
+Public Property Let FaultText(ByVal value As String)
+
+    mFaultText = value
 
 End Property
 
@@ -142,9 +174,23 @@ Public Property Get CauseText() As String
 End Property
 
 
+Public Property Let CauseText(ByVal value As String)
+
+    mCauseText = value
+
+End Property
+
+
 Public Property Get ResolutionText() As String
 
     ResolutionText = mResolutionText
+
+End Property
+
+
+Public Property Let ResolutionText(ByVal value As String)
+
+    mResolutionText = value
 
 End Property
 
@@ -156,9 +202,23 @@ Public Property Get NotesText() As String
 End Property
 
 
+Public Property Let NotesText(ByVal value As String)
+
+    mNotesText = value
+
+End Property
+
+
 Public Property Get reasonsText() As String
 
     reasonsText = mReasonsText
+
+End Property
+
+
+Public Property Let reasonsText(ByVal value As String)
+
+    mReasonsText = value
 
 End Property
 
@@ -170,3 +230,8 @@ Public Property Get differencesText() As String
 End Property
 
 
+Public Property Let differencesText(ByVal value As String)
+
+    mDifferencesText = value
+
+End Property
