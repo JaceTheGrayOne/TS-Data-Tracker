@@ -5,8 +5,8 @@ Option Explicit
 ' CONTROL REFERENCES
 '============================================================
 
-Public WithEvents ItemLabel As MSForms.Label
-Public AccentLabel As MSForms.Label
+Public WithEvents itemLabel As MSForms.Label
+Public WithEvents accentLabel As MSForms.Label
 
 
 '============================================================
@@ -16,13 +16,15 @@ Public AccentLabel As MSForms.Label
 Private mValue As String
 Private mKey As String
 Private mPicker As frmPicker
+Private mIsBranch As Boolean
+Private mUseMultipleSelectionAppearance As Boolean
 
 Private mNormalBackColor As Long
-Private mNormalForeColor As Long
 Private mNormalBorderColor As Long
 Private mNormalBold As Boolean
 
 Private mIsSelected As Boolean
+Private mIsHovered As Boolean
 
 
 '============================================================
@@ -32,108 +34,76 @@ Private mIsSelected As Boolean
 Public Sub Initialize( _
     ByVal itemControl As MSForms.Label, _
     ByVal accentControl As MSForms.Label, _
-    ByVal ItemValue As String, _
-    ByVal ItemKey As String, _
+    ByVal itemValue As String, _
+    ByVal itemKey As String, _
+    ByVal isBranch As Boolean, _
+    ByVal useMultipleSelectionAppearance As Boolean, _
     ByVal picker As frmPicker _
 )
 
-    Set ItemLabel = _
-        itemControl
+    Set itemLabel = itemControl
+    Set accentLabel = accentControl
+    Set mPicker = picker
 
-    Set AccentLabel = _
-        accentControl
+    mValue = itemValue
+    mKey = itemKey
+    mIsBranch = isBranch
+    mUseMultipleSelectionAppearance = useMultipleSelectionAppearance
 
-    mValue = _
-        ItemValue
+    ' The themed card is the baseline restored after hover and selection changes.
+    mNormalBackColor = itemLabel.BackColor
+    mNormalBorderColor = itemLabel.BorderColor
+    mNormalBold = itemLabel.Font.Bold
 
-    mKey = _
-        ItemKey
-
-    Set mPicker = _
-        picker
-
-    ' Capture the themed card appearance as the baseline for
-    ' hover and selection restoration.
-    mNormalBackColor = _
-        ItemLabel.BackColor
-
-    mNormalForeColor = _
-        ItemLabel.ForeColor
-
-    mNormalBorderColor = _
-        ItemLabel.BorderColor
-
-    mNormalBold = _
-        ItemLabel.Font.Bold
-
-    RestoreNormalAppearance
+    ApplyAppearance
 
 End Sub
 
 
-Public Property Get ItemValue() As String
+Public Property Get itemValue() As String
 
-    ItemValue = _
-        mValue
-
-End Property
-
-
-Public Property Get ItemKey() As String
-
-    ItemKey = _
-        mKey
+    itemValue = mValue
 
 End Property
 
 
-Public Sub SetSelected( _
-    ByVal selected As Boolean _
-)
+Public Property Get itemKey() As String
 
-    mIsSelected = _
-        selected
+    itemKey = mKey
 
-    RestoreNormalAppearance
+End Property
+
+
+Public Property Get isBranch() As Boolean
+
+    isBranch = mIsBranch
+
+End Property
+
+
+Public Sub SetSelected(ByVal selected As Boolean)
+
+    mIsSelected = selected
+
+    ApplyAppearance
 
 End Sub
 
 
-Public Sub SetHovered( _
-    ByVal hovered As Boolean _
-)
+Public Sub SetHovered(ByVal hovered As Boolean)
 
-    If hovered Then
+    mIsHovered = hovered
 
-        ItemLabel.BackColor = _
-            UILightenColor( _
-                mNormalBackColor, _
-                UI_HOVER_LIGHTEN)
+    ApplyAppearance
 
-        ItemLabel.ForeColor = _
-            mNormalForeColor
+End Sub
 
-        ItemLabel.BorderColor = _
-            UIDarkenColor( _
-                mNormalBackColor, _
-                UI_ACCENT_DARKEN)
 
-        ItemLabel.Font.Bold = _
-            True
+Public Sub Cleanup()
 
-        AccentLabel.BackColor = _
-            UIDarkenColor( _
-                mNormalBackColor, _
-                UI_ACCENT_DARKEN)
-
-        AccentLabel.Visible = _
-            True
-
-    Else
-
-        RestoreNormalAppearance
-
-    End If
+    Set itemLabel = Nothing
+    Set accentLabel = Nothing
+    Set mPicker = Nothing
 
 End Sub
 
@@ -142,47 +112,53 @@ End Sub
 ' APPEARANCE
 '============================================================
 
-Private Sub RestoreNormalAppearance()
+Private Sub ApplyAppearance()
 
-    ItemLabel.Caption = _
-        "   " & mValue
+    RestoreNormalAppearance
 
-    ItemLabel.BackColor = _
-        mNormalBackColor
+    If mIsHovered Then
 
-    ItemLabel.ForeColor = _
-        mNormalForeColor
+        itemLabel.BackColor = UILightenColor(mNormalBackColor, UI_HOVER_LIGHTEN)
+        itemLabel.Font.Bold = True
 
-    ItemLabel.BorderColor = _
-        mNormalBorderColor
-
-    ItemLabel.Font.Bold = _
-        mNormalBold
-
-    AccentLabel.BackColor = _
-        UIDarkenColor( _
-            mNormalBackColor, _
-            UI_ACCENT_DARKEN)
+    End If
 
     If mIsSelected Then
 
-        AccentLabel.Visible = _
-            True
+        If mUseMultipleSelectionAppearance Then
 
-        ItemLabel.BorderColor = _
-            UIDarkenColor( _
-                mNormalBackColor, _
-                UI_ACCENT_DARKEN)
+            itemLabel.BorderColor = UIColor_SelectionBorder()
+            accentLabel.BackColor = UIColor_SelectionBorder()
 
-        ItemLabel.Font.Bold = _
-            True
+        Else
 
-    Else
+            itemLabel.BorderColor = UIDarkenColor(mNormalBackColor, UI_ACCENT_DARKEN)
+            itemLabel.Font.Bold = True
+            accentLabel.BackColor = UIDarkenColor(mNormalBackColor, UI_ACCENT_DARKEN)
 
-        AccentLabel.Visible = _
-            False
+        End If
+
+        accentLabel.Visible = True
+
+    ElseIf mIsHovered Then
+
+        itemLabel.BorderColor = UIDarkenColor(mNormalBackColor, UI_ACCENT_DARKEN)
+        accentLabel.BackColor = UIDarkenColor(mNormalBackColor, UI_ACCENT_DARKEN)
+        accentLabel.Visible = True
 
     End If
+
+End Sub
+
+
+Private Sub RestoreNormalAppearance()
+
+    itemLabel.Caption = "   " & mValue
+    itemLabel.BackColor = mNormalBackColor
+    itemLabel.BorderColor = mNormalBorderColor
+    itemLabel.Font.Bold = mNormalBold
+
+    accentLabel.Visible = False
 
 End Sub
 
@@ -193,9 +169,7 @@ End Sub
 
 Private Sub ItemLabel_Click()
 
-    mPicker.CommitValue _
-        mValue, _
-        mKey
+    mPicker.HandleItemClick Me
 
 End Sub
 
@@ -207,8 +181,26 @@ Private Sub ItemLabel_MouseMove( _
     ByVal Y As Single _
 )
 
-    mPicker.HoverItem _
-        Me
+    mPicker.HoverItem Me
+
+End Sub
+
+
+Private Sub AccentLabel_Click()
+
+    mPicker.HandleItemClick Me
+
+End Sub
+
+
+Private Sub AccentLabel_MouseMove( _
+    ByVal button As Integer, _
+    ByVal Shift As Integer, _
+    ByVal X As Single, _
+    ByVal Y As Single _
+)
+
+    mPicker.HoverItem Me
 
 End Sub
 
