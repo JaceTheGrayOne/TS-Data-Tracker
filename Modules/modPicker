@@ -5,273 +5,297 @@ Option Explicit
 ' PUBLIC INTERFACE
 '============================================================
 
-Public Sub OpenPickerForCell( _
-    ByVal targetCell As Range _
-)
+Public Sub OpenPickerForCell(ByVal targetCell As Range)
 
     Dim values As Collection
-    Dim roots As Collection
-
     Dim fieldName As String
-    Dim parentField As String
-
-    Dim parentValue As String
-    Dim parentNodeID As String
-    Dim TestName As String
-
-    Dim parentIDColumn As Long
-    Dim targetIDColumn As Long
-
     Dim contextText As String
+    Dim targetIDColumn As Long
+    Dim allowMultipleSelection As Boolean
 
-    If targetCell Is Nothing Then
-        Exit Sub
-    End If
-
-    If targetCell.CountLarge <> 1 Then
-        Exit Sub
-    End If
-
-    Select Case targetCell.Column
-
-        '----------------------------------------------------
-        ' UUT
-        '----------------------------------------------------
-        Case 2
-
-            fieldName = _
-                "UUT"
-
-            Set values = _
-                GetCatalogValues( _
-                    "lst_UUT", _
-                    "UUT")
-
-            contextText = _
-                vbNullString
-
-            targetIDColumn = _
-                0
-
-        '----------------------------------------------------
-        ' TEST
-        '----------------------------------------------------
-        Case 4
-
-            fieldName = _
-                "Test"
-
-            Set values = _
-                GetCatalogValues( _
-                    "lst_Test", _
-                    "Test")
-
-            contextText = _
-                vbNullString
-
-            targetIDColumn = _
-                0
-
-        '----------------------------------------------------
-        ' TEST STEP
-        '----------------------------------------------------
-        Case 5
-
-            fieldName = _
-                "Test Step"
-
-            TestName = _
-                Trim$(CStr( _
-                    targetCell.Worksheet.Cells( _
-                        targetCell.Row, _
-                        4).value2))
-
-            If Len(TestName) = 0 Then
-                Exit Sub
-            End If
-
-            ' Prefer hierarchy roots; use legacy routing for
-            ' tests not yet migrated to tbl_TestHierarchy.
-            Set roots = _
-                GetRootNodes( _
-                    TestName)
-
-            If roots.Count > 0 Then
-
-                Set values = _
-                    roots
-
-                targetIDColumn = _
-                    NodeIDColumn( _
-                        fieldName)
-
-            Else
-
-                Set values = _
-                    GetRoutedValues( _
-                        "Test", _
-                        TestName, _
-                        fieldName)
-
-                targetIDColumn = _
-                    0
-
-            End If
-
-            contextText = _
-                BuildPickerContext( _
-                    targetCell)
-
-        '----------------------------------------------------
-        ' SUBORDINATE TEST HIERARCHY
-        '----------------------------------------------------
-        Case 6, 7, 8, 9
-
-            fieldName = _
-                FieldNameFromColumn( _
-                    targetCell.Column)
-
-            parentField = _
-                FieldNameFromColumn( _
-                    targetCell.Column - 1)
-
-            If Len(fieldName) = 0 _
-                Or Len(parentField) = 0 Then
-
-                Exit Sub
-
-            End If
-
-            parentValue = _
-                Trim$(CStr( _
-                    targetCell.Worksheet.Cells( _
-                        targetCell.Row, _
-                        targetCell.Column - 1).value2))
-
-            If Len(parentValue) = 0 _
-                Or parentValue = "-" Then
-
-                Exit Sub
-
-            End If
-
-            parentIDColumn = _
-                NodeIDColumn( _
-                    parentField)
-
-            parentNodeID = _
-                vbNullString
-
-            If parentIDColumn > 0 Then
-
-                parentNodeID = _
-                    Trim$(CStr( _
-                        targetCell.Worksheet.Cells( _
-                            targetCell.Row, _
-                            parentIDColumn).value2))
-
-            End If
-
-            If Len(parentNodeID) > 0 Then
-
-                Set values = _
-                    GetChildNodes( _
-                        parentNodeID)
-
-                targetIDColumn = _
-                    NodeIDColumn( _
-                        fieldName)
-
-            Else
-
-                ' No Node ID indicates a legacy-routed parent.
-                Set values = _
-                    GetRoutedValues( _
-                        parentField, _
-                        parentValue, _
-                        fieldName)
-
-                targetIDColumn = _
-                    0
-
-            End If
-
-            contextText = _
-                BuildPickerContext( _
-                    targetCell)
-
-        Case Else
-
-            Exit Sub
-
-    End Select
-
-    If values Is Nothing Then
-        Exit Sub
-    End If
-
-    If values.Count = 0 Then
-        Exit Sub
-    End If
+    If Not TryResolvePickerRequest( _
+            targetCell, _
+            values, _
+            fieldName, _
+            contextText, _
+            targetIDColumn, _
+            allowMultipleSelection) Then Exit Sub
 
     frmPicker.LoadPicker _
         targetCell, _
         fieldName, _
         values, _
         contextText, _
-        targetIDColumn
+        targetIDColumn, _
+        allowMultipleSelection
 
-    PositionPickerNearCell _
-        frmPicker, _
-        targetCell
+    PositionPickerNearCell frmPicker, targetCell
 
-    frmPicker.Show _
-        vbModeless
+    frmPicker.Show vbModeless
 
 End Sub
+
+
+Public Function ShowGuidedPickerForCell(ByVal targetCell As Range) As Boolean
+
+    Dim picker As frmPicker
+    Dim values As Collection
+    Dim fieldName As String
+    Dim contextText As String
+    Dim targetIDColumn As Long
+    Dim allowMultipleSelection As Boolean
+    Dim savedErrNumber As Long
+    Dim savedErrDescription As String
+
+    On Error GoTo ShowFailed
+
+    If Not TryResolvePickerRequest( _
+            targetCell, _
+            values, _
+            fieldName, _
+            contextText, _
+            targetIDColumn, _
+            allowMultipleSelection) Then Exit Function
+
+    Set picker = New frmPicker
+
+    picker.LoadPicker _
+        targetCell, _
+        fieldName, _
+        values, _
+        contextText, _
+        targetIDColumn, _
+        allowMultipleSelection, _
+        True
+
+    PositionPickerNearCell picker, targetCell
+
+    picker.Show vbModal
+
+    ShowGuidedPickerForCell = picker.SelectionConfirmed
+
+    Unload picker
+
+    Exit Function
+
+
+ShowFailed:
+
+    savedErrNumber = Err.Number
+    savedErrDescription = Err.description
+
+    On Error Resume Next
+
+    If Not picker Is Nothing Then
+        Unload picker
+    End If
+
+    On Error GoTo 0
+
+    Err.Raise _
+        savedErrNumber, _
+        "modPicker.ShowGuidedPickerForCell", _
+        savedErrDescription
+
+End Function
+
+
+'============================================================
+' PICKER REQUEST RESOLUTION
+'============================================================
+
+Private Function TryResolvePickerRequest( _
+    ByVal targetCell As Range, _
+    ByRef values As Collection, _
+    ByRef fieldName As String, _
+    ByRef contextText As String, _
+    ByRef targetIDColumn As Long, _
+    ByRef allowMultipleSelection As Boolean _
+) As Boolean
+
+    Dim roots As Collection
+    Dim parentField As String
+    Dim failureType As String
+    Dim parentValue As String
+    Dim parentNodeIDs As String
+    Dim branchValue As String
+    Dim branchNodeID As String
+    Dim testName As String
+    Dim failureValue As Variant
+    Dim parentIDColumn As Long
+    Dim branchCount As Long
+    Dim uutColumn As Long
+    Dim failureTypeColumn As Long
+    Dim testColumn As Long
+    Dim testStepColumn As Long
+    Dim subStep4Column As Long
+
+    If targetCell Is Nothing Then Exit Function
+
+    Set values = Nothing
+
+    fieldName = vbNullString
+    contextText = vbNullString
+    targetIDColumn = 0
+    allowMultipleSelection = False
+
+    uutColumn = fieldColumn("UUT")
+    failureTypeColumn = fieldColumn("Failure Type")
+    testColumn = fieldColumn("Test")
+    testStepColumn = fieldColumn("Test Step")
+    subStep4Column = fieldColumn("Sub Step 4")
+
+    If targetCell.Column >= testColumn And targetCell.Column <= subStep4Column Then
+
+        failureValue = targetCell.Worksheet.Cells(targetCell.Row, failureTypeColumn).value2
+
+        If IsError(failureValue) Then Exit Function
+
+        If Not IsEmpty(failureValue) Then
+            failureType = Trim$(CStr(failureValue))
+        End If
+
+        If FailureTypeSuppressesTestHierarchy(failureType) Then Exit Function
+
+    End If
+
+    Select Case targetCell.Column
+
+        Case uutColumn
+
+            fieldName = "UUT"
+            Set values = GetCatalogValues("lst_UUT", "UUT")
+
+        Case failureTypeColumn
+
+            fieldName = "Failure Type"
+            Set values = GetCatalogValues("lst_FailureType", "Failure Type")
+
+        Case testColumn
+
+            fieldName = "Test"
+            Set values = GetCatalogValues("lst_Test", "Test")
+
+        Case testStepColumn
+
+            fieldName = "Test Step"
+            testName = PickerCellText(targetCell.Worksheet.Cells(targetCell.Row, testColumn))
+
+            If Len(testName) = 0 Or testName = "-" Then Exit Function
+
+            Set roots = GetRootNodes(testName)
+
+            If roots.Count > 0 Then
+
+                Set values = roots
+                targetIDColumn = NodeIDColumn(fieldName)
+
+            Else
+
+                Set values = GetRoutedValues("Test", testName, fieldName)
+
+            End If
+
+            contextText = BuildPickerContext(targetCell)
+            allowMultipleSelection = True
+
+        Case testStepColumn + 1 To subStep4Column
+
+            fieldName = FieldNameFromColumn(targetCell.Column)
+            parentField = FieldNameFromColumn(targetCell.Column - 1)
+
+            If Len(fieldName) = 0 Or Len(parentField) = 0 Then Exit Function
+
+            parentValue = PickerCellText(targetCell.Worksheet.Cells(targetCell.Row, targetCell.Column - 1))
+
+            If Len(parentValue) = 0 Or parentValue = "-" Then Exit Function
+
+            parentIDColumn = NodeIDColumn(parentField)
+
+            If parentIDColumn > 0 Then
+                parentNodeIDs = PickerCellText(targetCell.Worksheet.Cells(targetCell.Row, parentIDColumn))
+            End If
+
+            If Not TryGetHierarchyBranchSelection( _
+                    parentField, _
+                    parentValue, _
+                    parentNodeIDs, _
+                    branchValue, _
+                    branchNodeID, _
+                    branchCount) Then Exit Function
+
+            If branchCount <> 1 Then Exit Function
+
+            If Len(branchNodeID) > 0 Then
+
+                Set values = GetChildNodes(branchNodeID)
+                targetIDColumn = NodeIDColumn(fieldName)
+
+            Else
+
+                Set values = GetRoutedValues(parentField, branchValue, fieldName)
+
+            End If
+
+            contextText = BuildPickerContext(targetCell)
+            allowMultipleSelection = True
+
+        Case Else
+            Exit Function
+
+    End Select
+
+    If values Is Nothing Then Exit Function
+    If values.Count = 0 Then Exit Function
+
+    TryResolvePickerRequest = True
+
+End Function
 
 
 '============================================================
 ' INTERNAL HELPERS
 '============================================================
 
-Private Function BuildPickerContext( _
-    ByVal targetCell As Range _
-) As String
+Private Function BuildPickerContext(ByVal targetCell As Range) As String
 
     Dim columnNumber As Long
-
     Dim valueText As String
+    Dim displayText As String
     Dim result As String
 
-    For columnNumber = _
-        4 To targetCell.Column - 1
+    For columnNumber = fieldColumn("Test") To targetCell.Column - 1
 
-        valueText = _
-            Trim$(CStr( _
-                targetCell.Worksheet.Cells( _
-                    targetCell.Row, _
-                    columnNumber).value2))
+        valueText = PickerCellText(targetCell.Worksheet.Cells(targetCell.Row, columnNumber))
 
-        If Len(valueText) > 0 _
-            And valueText <> "-" Then
+        If Len(valueText) > 0 And valueText <> "-" Then
+
+            displayText = FormatHierarchySelectionForDisplay(valueText)
 
             If Len(result) > 0 Then
-
-                result = _
-                    result & "  >  "
-
+                result = result & "  >  "
             End If
 
-            result = _
-                result & valueText
+            result = result & displayText
 
         End If
 
     Next columnNumber
 
-    BuildPickerContext = _
-        result
+    BuildPickerContext = result
+
+End Function
+
+
+Private Function PickerCellText(ByVal sourceCell As Range) As String
+
+    Dim cellValue As Variant
+
+    cellValue = sourceCell.value2
+
+    If IsError(cellValue) Or IsEmpty(cellValue) Then Exit Function
+
+    PickerCellText = Trim$(CStr(cellValue))
 
 End Function
 
