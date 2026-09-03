@@ -25,22 +25,16 @@ Public Sub TestPrivateSheetViewCapability()
 
     On Error GoTo TestFailed
 
-    Set ws = _
-        ThisWorkbook.Worksheets( _
-            TARGET_SHEET)
+    Set ws = ThisWorkbook.Worksheets(TARGET_SHEET)
 
     ws.Activate
 
     DoEvents
 
-    newViewEnabled = _
-        Application.CommandBars.GetEnabledMso( _
-            CMD_NEW_VIEW)
+    newViewEnabled = Application.CommandBars.GetEnabledMso(CMD_NEW_VIEW)
 
     ' Exit command enabled-state is used to detect an active Sheet View.
-    exitViewEnabledBefore = _
-        Application.CommandBars.GetEnabledMso( _
-            CMD_EXIT_VIEW)
+    exitViewEnabledBefore = Application.CommandBars.GetEnabledMso(CMD_EXIT_VIEW)
 
     If exitViewEnabledBefore Then
 
@@ -73,14 +67,11 @@ Public Sub TestPrivateSheetViewCapability()
 
     End If
 
-    Application.CommandBars.ExecuteMso _
-        CMD_NEW_VIEW
+    Application.CommandBars.ExecuteMso CMD_NEW_VIEW
 
     DoEvents
 
-    exitViewEnabledAfter = _
-        Application.CommandBars.GetEnabledMso( _
-            CMD_EXIT_VIEW)
+    exitViewEnabledAfter = Application.CommandBars.GetEnabledMso(CMD_EXIT_VIEW)
 
     If exitViewEnabledAfter Then
 
@@ -119,7 +110,7 @@ TestFailed:
         vbCrLf & vbCrLf & _
         "Error " & CStr(Err.Number) & _
         vbCrLf & _
-        Err.Description, _
+        Err.description, _
         vbCritical, _
         "Private Sheet View Test"
 
@@ -130,11 +121,9 @@ Public Sub ExitPrivateSheetViewTest()
 
     On Error GoTo ExitFailed
 
-    If Application.CommandBars.GetEnabledMso( _
-            CMD_EXIT_VIEW) Then
+    If Application.CommandBars.GetEnabledMso(CMD_EXIT_VIEW) Then
 
-        Application.CommandBars.ExecuteMso _
-            CMD_EXIT_VIEW
+        Application.CommandBars.ExecuteMso CMD_EXIT_VIEW
 
         DoEvents
 
@@ -162,7 +151,7 @@ ExitFailed:
         vbCrLf & vbCrLf & _
         "Error " & CStr(Err.Number) & _
         vbCrLf & _
-        Err.Description, _
+        Err.description, _
         vbCritical, _
         "Private Sheet View Test"
 
@@ -176,8 +165,7 @@ Public Sub TestSilentExitTemporarySheetView()
 
     On Error GoTo TestFailed
 
-    If Not Application.CommandBars.GetEnabledMso( _
-            CMD_EXIT_VIEW) Then
+    If Not Application.CommandBars.GetEnabledMso(CMD_EXIT_VIEW) Then
 
         MsgBox _
             "TEST NOT RUN" & _
@@ -192,17 +180,12 @@ Public Sub TestSilentExitTemporarySheetView()
 
     ' Alt+N selects "Don't Keep" in the Sheet View confirmation.
     ' Queue it before ExecuteMso so it remains pending for the modal dialog.
-    Application.SendKeys _
-        "%n", _
-        False
-
-    Application.CommandBars.ExecuteMso _
-        CMD_EXIT_VIEW
+    Application.SendKeys "%n", False
+    Application.CommandBars.ExecuteMso CMD_EXIT_VIEW
 
     DoEvents
 
-    If Application.CommandBars.GetEnabledMso( _
-            CMD_EXIT_VIEW) Then
+    If Application.CommandBars.GetEnabledMso(CMD_EXIT_VIEW) Then
 
         MsgBox _
             "FAIL" & _
@@ -237,11 +220,8 @@ Public Sub TestSilentExitTemporarySheetView()
 
 TestFailed:
 
-    errorNumber = _
-        Err.Number
-
-    errorDescription = _
-        Err.Description
+    errorNumber = Err.Number
+    errorDescription = Err.description
 
     MsgBox _
         "ERROR" & _
