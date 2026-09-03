@@ -1,0 +1,231 @@
+Option Explicit
+
+
+'============================================================
+' MODULE STATE
+'============================================================
+
+Private mTarget As Range
+Private mEntryConfirmed As Boolean
+
+
+'============================================================
+' PUBLIC INTERFACE
+'============================================================
+
+Public Sub LoadSerialNumber(ByVal targetCell As Range)
+
+    If targetCell Is Nothing Then Exit Sub
+
+    Set mTarget = targetCell
+
+    mEntryConfirmed = False
+    txtSerialNumber.value = ReadRangeText(targetCell)
+
+    UpdateConfirmState
+
+End Sub
+
+
+Public Property Get EntryConfirmed() As Boolean
+
+    EntryConfirmed = mEntryConfirmed
+
+End Property
+
+
+'============================================================
+' USERFORM LIFECYCLE
+'============================================================
+
+Private Sub UserForm_Initialize()
+
+    Me.BackColor = UIColor_FormBackground()
+    Me.Caption = UI_APP_CAPTION
+
+    With lblTitle
+
+        .Caption = "SERIAL NUMBER"
+        .BackStyle = fmBackStyleTransparent
+        .ForeColor = UIColor_TextPrimary()
+        .Font.Name = UI_FONT
+        .Font.Size = UI_TITLE_FONT_SIZE
+        .Font.Bold = True
+
+    End With
+
+    With lblPrompt
+
+        .Caption = "Enter the unit serial number."
+        .BackStyle = fmBackStyleTransparent
+        .ForeColor = UIColor_TextMuted()
+        .Font.Name = UI_FONT
+        .Font.Size = UI_PATH_FONT_SIZE
+        .Font.Bold = False
+
+    End With
+
+    With txtSerialNumber
+
+        .BackColor = UIColor_InputBackground()
+        .ForeColor = UIColor_TextPrimary()
+        .BorderStyle = fmBorderStyleSingle
+        .BorderColor = UIColor_InputBorder()
+        .Font.Name = UI_FONT
+        .Font.Size = UI_SEARCH_FONT_SIZE
+        .Multiline = False
+        .EnterKeyBehavior = False
+        .TabIndex = 0
+
+    End With
+
+    With cmdConfirm
+
+        .Caption = "Confirm"
+        .BackColor = UIColor_ButtonBackground()
+        .ForeColor = UIColor_ButtonText()
+        .Font.Name = UI_FONT
+        .Font.Size = UI_BUTTON_FONT_SIZE
+        .Font.Bold = False
+        .Enabled = False
+        .Default = True
+        .Cancel = False
+        .TabStop = True
+        .TabIndex = 1
+
+    End With
+
+End Sub
+
+
+Private Sub UserForm_Activate()
+
+    txtSerialNumber.SetFocus
+    txtSerialNumber.SelStart = 0
+    txtSerialNumber.SelLength = Len(CStr(txtSerialNumber.value))
+
+End Sub
+
+
+Private Sub UserForm_QueryClose( _
+    Cancel As Integer, _
+    CloseMode As Integer _
+)
+
+    If CloseMode <> vbFormControlMenu Then Exit Sub
+
+    Cancel = True
+    CancelEntry
+
+End Sub
+
+
+'============================================================
+' CONTROL EVENTS
+'============================================================
+
+Private Sub txtSerialNumber_Change()
+
+    UpdateConfirmState
+
+End Sub
+
+
+Private Sub txtSerialNumber_KeyDown( _
+    ByVal KeyCode As MSForms.ReturnInteger, _
+    ByVal Shift As Integer _
+)
+
+    Select Case KeyCode
+
+        Case vbKeyReturn
+
+            If cmdConfirm.Enabled Then
+                ConfirmEntry
+            End If
+
+            KeyCode = 0
+
+        Case vbKeyEscape
+
+            CancelEntry
+            KeyCode = 0
+
+    End Select
+
+End Sub
+
+
+Private Sub cmdConfirm_Click()
+
+    ConfirmEntry
+
+End Sub
+
+
+Private Sub cmdConfirm_KeyDown(ByVal KeyCode As MSForms.ReturnInteger, ByVal Shift As Integer)
+
+    If KeyCode <> vbKeyEscape Then Exit Sub
+
+    CancelEntry
+    KeyCode = 0
+
+End Sub
+
+
+'============================================================
+' ENTRY COMMIT
+'============================================================
+
+Private Sub ConfirmEntry()
+
+    Dim serialNumber As String
+
+    If mTarget Is Nothing Then Exit Sub
+
+    serialNumber = Trim$(CStr(txtSerialNumber.value))
+
+    If Len(serialNumber) = 0 Then Exit Sub
+
+    mTarget.NumberFormat = "@"
+    mTarget.value2 = serialNumber
+
+    mEntryConfirmed = True
+
+    Me.Hide
+
+End Sub
+
+
+Private Sub CancelEntry()
+
+    mEntryConfirmed = False
+
+    Me.Hide
+
+End Sub
+
+
+Private Sub UpdateConfirmState()
+
+    cmdConfirm.Enabled = (Len(Trim$(CStr(txtSerialNumber.value))) > 0)
+
+End Sub
+
+
+'============================================================
+' INTERNAL HELPERS
+'============================================================
+
+Private Function ReadRangeText(ByVal sourceCell As Range) As String
+
+    Dim cellValue As Variant
+
+    cellValue = sourceCell.value2
+
+    If IsError(cellValue) Or IsEmpty(cellValue) Then Exit Function
+
+    ReadRangeText = CStr(cellValue)
+
+End Function
+
