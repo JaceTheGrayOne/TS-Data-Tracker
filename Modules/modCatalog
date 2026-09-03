@@ -13,9 +13,7 @@ Public Function GetCatalogRange( _
     Dim tbl As ListObject
     Dim col As listColumn
 
-    Set tbl = _
-        FindCatalogTable( _
-            tableName)
+    Set tbl = FindCatalogTable(tableName)
 
     If tbl Is Nothing Then
 
@@ -28,9 +26,7 @@ Public Function GetCatalogRange( _
 
     On Error Resume Next
 
-    Set col = _
-        tbl.ListColumns( _
-            columnName)
+    Set col = tbl.ListColumns(columnName)
 
     On Error GoTo 0
 
@@ -40,8 +36,7 @@ Public Function GetCatalogRange( _
             vbObjectError + 1201, _
             "modCatalog.GetCatalogRange", _
             "Table '" & tableName & _
-            "' does not contain column '" & _
-            columnName & "'."
+            "' does not contain column '" & columnName & "'."
 
     End If
 
@@ -55,8 +50,7 @@ Public Function GetCatalogRange( _
 
     End If
 
-    Set GetCatalogRange = _
-        col.DataBodyRange
+    Set GetCatalogRange = col.DataBodyRange
 
 End Function
 
@@ -71,35 +65,24 @@ Public Function GetCatalogValues( _
     Dim cell As Range
     Dim valueText As String
 
-    Set result = _
-        New Collection
-
-    Set sourceRange = _
-        GetCatalogRange( _
-            tableName, _
-            columnName)
+    Set result = New Collection
+    Set sourceRange = GetCatalogRange(tableName, columnName)
 
     For Each cell In sourceRange.Cells
 
         If Not IsError(cell.value2) Then
 
-            valueText = _
-                Trim$( _
-                    CStr(cell.value2))
+            valueText = Trim$(CStr(cell.value2))
 
             If Len(valueText) > 0 Then
-
-                result.Add _
-                    valueText
-
+                result.Add valueText
             End If
 
         End If
 
     Next cell
 
-    Set GetCatalogValues = _
-        result
+    Set GetCatalogValues = result
 
 End Function
 
@@ -128,13 +111,8 @@ Public Function GetRoutedValues( _
 
     End If
 
-    Set result = _
-        GetCatalogValues( _
-            tableName, _
-            columnName)
-
-    Set GetRoutedValues = _
-        result
+    Set result = GetCatalogValues(tableName, columnName)
+    Set GetRoutedValues = result
 
 End Function
 
@@ -143,9 +121,7 @@ End Function
 ' INTERNAL HELPERS
 '============================================================
 
-Private Function FindCatalogTable( _
-    ByVal tableName As String _
-) As ListObject
+Private Function FindCatalogTable(ByVal tableName As String) As ListObject
 
     Dim ws As Worksheet
     Dim tbl As ListObject
@@ -156,16 +132,13 @@ Private Function FindCatalogTable( _
 
         On Error Resume Next
 
-        Set tbl = _
-            ws.ListObjects( _
-                tableName)
+        Set tbl = ws.ListObjects(tableName)
 
         On Error GoTo 0
 
         If Not tbl Is Nothing Then
 
-            Set FindCatalogTable = _
-                tbl
+            Set FindCatalogTable = tbl
 
             Exit Function
 
@@ -186,28 +159,11 @@ Public Sub TestCatalogEngine()
     Debug.Print "CATALOG ENGINE TEST"
     Debug.Print String(70, "=")
 
-    TestRoutedCatalog _
-        "Test", _
-        "Thermal", _
-        "Test Step", _
-        "ESS Op Cycle"
+    TestRoutedCatalog "Test", "Thermal", "Test Step", "ESS Op Cycle"
+    TestRoutedCatalog "Test Step", "ESS Op Cycle", "Sub Step 1", "Cold 1"
+    TestRoutedCatalog "Sub Step 1", "Cold 1", "Sub Step 2", "EIA530 Baseband Red"
 
-    TestRoutedCatalog _
-        "Test Step", _
-        "ESS Op Cycle", _
-        "Sub Step 1", _
-        "Cold 1"
-
-    TestRoutedCatalog _
-        "Sub Step 1", _
-        "Cold 1", _
-        "Sub Step 2", _
-        "EIA530 Baseband Red"
-
-    TestMissingCatalogRoute _
-        "Test Step", _
-        "7.2 Test Setup", _
-        "Sub Step 1"
+    TestMissingCatalogRoute "Test Step", "7.2 Test Setup", "Sub Step 1"
 
     Debug.Print String(70, "=")
 
@@ -225,18 +181,11 @@ Private Sub TestRoutedCatalog( _
     Dim item As Variant
     Dim found As Boolean
 
-    Set values = _
-        GetRoutedValues( _
-            parentField, _
-            parentValue, _
-            childField)
+    Set values = GetRoutedValues(parentField, parentValue, childField)
 
     If values Is Nothing Then
 
-        Debug.Print _
-            "FAIL  " & parentField & _
-            " = " & parentValue & _
-            " -> NO CATALOG"
+        Debug.Print "FAIL  " & parentField & " = " & parentValue & " -> NO CATALOG"
 
         Exit Sub
 
@@ -244,10 +193,7 @@ Private Sub TestRoutedCatalog( _
 
     For Each item In values
 
-        If StrComp( _
-                CStr(item), _
-                expectedValue, _
-                vbTextCompare) = 0 Then
+        If StrComp(CStr(item), expectedValue, vbTextCompare) = 0 Then
 
             found = True
 
@@ -260,30 +206,18 @@ Private Sub TestRoutedCatalog( _
     If found Then
 
         Debug.Print _
-            "PASS  " & _
-            parentField & " = " & parentValue & _
+            "PASS  " & parentField & " = " & parentValue & _
             " -> " & values.Count & _
-            " item(s); contains [" & _
-            expectedValue & "]"
+            " item(s); contains [" & expectedValue & "]"
 
     Else
 
-        Debug.Print _
-            "FAIL  " & _
-            parentField & " = " & parentValue
-
-        Debug.Print _
-            "      Expected catalog to contain: [" & _
-            expectedValue & "]"
-
-        Debug.Print _
-            "      Actual values:"
+        Debug.Print "FAIL  " & parentField & " = " & parentValue
+        Debug.Print "      Expected catalog to contain: [" & expectedValue & "]"
+        Debug.Print "      Actual values:"
 
         For Each item In values
-
-            Debug.Print _
-                "          " & CStr(item)
-
+            Debug.Print "          " & CStr(item)
         Next item
 
     End If
@@ -299,25 +233,16 @@ Private Sub TestMissingCatalogRoute( _
 
     Dim values As Collection
 
-    Set values = _
-        GetRoutedValues( _
-            parentField, _
-            parentValue, _
-            childField)
+    Set values = GetRoutedValues(parentField, parentValue, childField)
 
     If values Is Nothing Then
 
-        Debug.Print _
-            "PASS  No catalog route: " & _
-            parentField & " = " & parentValue
+        Debug.Print "PASS  No catalog route: " & parentField & " = " & parentValue
 
     Else
 
-        Debug.Print _
-            "FAIL  Expected no catalog route for " & _
-            parentField & " = " & parentValue
+        Debug.Print "FAIL  Expected no catalog route for " & parentField & " = " & parentValue
 
     End If
 
 End Sub
-
