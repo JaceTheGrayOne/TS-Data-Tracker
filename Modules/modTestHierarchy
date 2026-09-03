@@ -42,7 +42,7 @@ Public Sub RebuildTestHierarchy()
     Dim testMarker As String
 
     Dim rawLine As String
-    Dim NodeID As String
+    Dim nodeID As String
     Dim ParentID As String
     Dim labelText As String
 
@@ -69,27 +69,18 @@ Public Sub RebuildTestHierarchy()
     ' Not doing this can lead to an earlier op throwing before variable
     ' capture that could cause the cleanup handler to restore some
     ' variable's default boolean to False erroneously.
-    oldEnableEvents = _
-        Application.EnableEvents
+    oldEnableEvents = Application.EnableEvents
+    oldScreenUpdating = Application.ScreenUpdating
 
-    oldScreenUpdating = _
-        Application.ScreenUpdating
-
-    Set outline = _
-        FindHierarchyTable( _
-            OUTLINE_TABLE_NAME)
-
-    Set hierarchy = _
-        FindHierarchyTable( _
-            HIERARCHY_TABLE_NAME)
+    Set outline = FindHierarchyTable(OUTLINE_TABLE_NAME)
+    Set hierarchy = FindHierarchyTable(HIERARCHY_TABLE_NAME)
 
     If outline Is Nothing Then
 
         Err.Raise _
             vbObjectError + 1600, _
             "modTestHierarchy.RebuildTestHierarchy", _
-            "Could not find table '" & _
-            OUTLINE_TABLE_NAME & "'."
+            "Could not find table '" & OUTLINE_TABLE_NAME & "'."
 
     End If
 
@@ -98,108 +89,66 @@ Public Sub RebuildTestHierarchy()
         Err.Raise _
             vbObjectError + 1601, _
             "modTestHierarchy.RebuildTestHierarchy", _
-            "Could not find table '" & _
-            HIERARCHY_TABLE_NAME & "'."
+            "Could not find table '" & HIERARCHY_TABLE_NAME & "'."
+
+    End If
+
+    ' Edge Case Defense:
+    ' An empty source outline cannot safely replace an existing generated hierarchy.
+    If Not OutlineContainsPopulatedLines(outline) Then
+
+        Err.Raise _
+            vbObjectError + 1607, _
+            "modTestHierarchy.RebuildTestHierarchy", _
+            "tbl_TestOutline contains no populated Raw Line values. The existing hierarchy was not changed."
 
     End If
 
     '----------------------------------------------------
     ' COLUMN MAPPING
     '----------------------------------------------------
-    colTest = _
-        outline.ListColumns( _
-            "Test" _
-        ).Index
+    colTest = outline.ListColumns("Test").Index
+    colNodeID = outline.ListColumns("Node ID").Index
+    colRawLine = outline.ListColumns("Raw Line").Index
 
-    colNodeID = _
-        outline.ListColumns( _
-            "Node ID" _
-        ).Index
-
-    colRawLine = _
-        outline.ListColumns( _
-            "Raw Line" _
-        ).Index
-
-    outColTest = _
-        hierarchy.ListColumns( _
-            "Test" _
-        ).Index
-
-    outColNodeID = _
-        hierarchy.ListColumns( _
-            "Node ID" _
-        ).Index
-
-    outColParentID = _
-        hierarchy.ListColumns( _
-            "Parent ID" _
-        ).Index
-
-    outColLabel = _
-        hierarchy.ListColumns( _
-            "Label" _
-        ).Index
-
-    outColDepth = _
-        hierarchy.ListColumns( _
-            "Depth" _
-        ).Index
-
-    outColSort = _
-        hierarchy.ListColumns( _
-            "Sort Order" _
-        ).Index
-
-    outColSourceRow = _
-        hierarchy.ListColumns( _
-            "Source Row" _
-        ).Index
+    outColTest = hierarchy.ListColumns("Test").Index
+    outColNodeID = hierarchy.ListColumns("Node ID").Index
+    outColParentID = hierarchy.ListColumns("Parent ID").Index
+    outColLabel = hierarchy.ListColumns("Label").Index
+    outColDepth = hierarchy.ListColumns("Depth").Index
+    outColSort = hierarchy.ListColumns("Sort Order").Index
+    outColSourceRow = hierarchy.ListColumns("Source Row").Index
 
     Application.EnableEvents = False
     Application.ScreenUpdating = False
 
-    Set usedIDs = _
-        CreateObject( _
-            "Scripting.Dictionary")
-
-    usedIDs.CompareMode = _
-        vbTextCompare
+    Set usedIDs = CreateObject("Scripting.Dictionary")
+    usedIDs.CompareMode = vbTextCompare
 
     '----------------------------------------------------
     ' FIRST PASS - EXISTING NODE IDS
     '----------------------------------------------------
     ' Existing IDs remain stable across rebuilds.
-    nextNodeNumber = _
-        1
+    nextNodeNumber = 1
 
     For Each outlineRow In outline.ListRows
 
-        NodeID = _
-            Trim$(CStr( _
-                outlineRow.Range.Cells( _
-                    1, _
-                    colNodeID).value2))
+        nodeID = Trim$(CStr(outlineRow.Range.Cells(1, colNodeID).value2))
 
-        If Len(NodeID) > 0 Then
+        If Len(nodeID) > 0 Then
 
-            If usedIDs.Exists(NodeID) Then
+            If usedIDs.Exists(nodeID) Then
 
                 Err.Raise _
                     vbObjectError + 1602, _
                     "modTestHierarchy.RebuildTestHierarchy", _
-                    "Duplicate Node ID '" & NodeID & _
-                    "' in tbl_TestOutline."
+                    "Duplicate Node ID '" & nodeID & "' in tbl_TestOutline."
 
             End If
 
-            usedIDs.Add _
-                NodeID, _
-                True
+            usedIDs.Add nodeID, True
 
-            UpdateNextGeneratedNodeNumber _
-                NodeID, _
-                nextNodeNumber
+            UpdateNextGeneratedNodeNumber nodeID, nextNodeNumber
 
         End If
 
@@ -209,71 +158,42 @@ Public Sub RebuildTestHierarchy()
     ' GENERATED HIERARCHY
     '----------------------------------------------------
     Do While hierarchy.ListRows.Count > 0
-
         hierarchy.ListRows(1).Delete
-
     Loop
 
-    Set lastNodeAtDepth = _
-        CreateObject( _
-            "Scripting.Dictionary")
+    Set lastNodeAtDepth = CreateObject("Scripting.Dictionary")
 
-    currentTest = _
-        vbNullString
-
-    previousDepth = _
-        -1
-
-    maximumDepth = _
-        0
-
-    SortOrder = _
-        0
-
-    parsedCount = _
-        0
+    currentTest = vbNullString
+    previousDepth = -1
+    maximumDepth = 0
+    SortOrder = 0
+    parsedCount = 0
 
     '----------------------------------------------------
     ' SECOND PASS - OUTLINE PARSING
     '----------------------------------------------------
     For Each outlineRow In outline.ListRows
 
-        testMarker = _
-            Trim$(CStr( _
-                outlineRow.Range.Cells( _
-                    1, _
-                    colTest).value2))
-
-        rawLine = _
-            CStr( _
-                outlineRow.Range.Cells( _
-                    1, _
-                    colRawLine).value2)
+        testMarker = Trim$(CStr(outlineRow.Range.Cells(1, colTest).value2))
+        rawLine = CStr(outlineRow.Range.Cells(1, colRawLine).value2)
 
         ' Blank Test cells inherit the current Test.
         ' Repeated Test names do not reset the hierarchy stack.
         If Len(testMarker) > 0 Then
 
-            If StrComp( _
-                    testMarker, _
-                    currentTest, _
-                    vbTextCompare) <> 0 Then
+            If StrComp(testMarker, currentTest, vbTextCompare) <> 0 Then
 
-                currentTest = _
-                    testMarker
+                currentTest = testMarker
 
                 lastNodeAtDepth.RemoveAll
 
-                previousDepth = _
-                    -1
+                previousDepth = -1
 
             End If
 
         End If
 
-        If Len(Trim$(rawLine)) = 0 Then
-            GoTo NextOutlineRow
-        End If
+        If Len(Trim$(rawLine)) = 0 Then GoTo NextOutlineRow
 
         If Len(currentTest) = 0 Then
 
@@ -286,16 +206,11 @@ Public Sub RebuildTestHierarchy()
 
         End If
 
-        ParseOutlineLine _
-            rawLine, _
-            Depth, _
-            labelText, _
-            outlineRow.Range.Row
+        ParseOutlineLine rawLine, Depth, labelText, outlineRow.Range.Row
 
         ' Edge Case Defense:
         ' Every Test hierarchy must begin at depth 0.
-        If previousDepth = -1 _
-            And Depth <> 0 Then
+        If previousDepth = -1 And Depth <> 0 Then
 
             Err.Raise _
                 vbObjectError + 1604, _
@@ -331,36 +246,24 @@ Public Sub RebuildTestHierarchy()
         End If
 
         ' Generate an ID only for previously unidentified source rows.
-        NodeID = _
-            Trim$(CStr( _
-                outlineRow.Range.Cells( _
-                    1, _
-                    colNodeID).value2))
+        nodeID = Trim$(CStr(outlineRow.Range.Cells(1, colNodeID).value2))
 
-        If Len(NodeID) = 0 Then
+        If Len(nodeID) = 0 Then
 
-            NodeID = _
-                GenerateNextNodeID( _
-                    usedIDs, _
-                    nextNodeNumber)
+            nodeID = GenerateNextNodeID(usedIDs, nextNodeNumber)
 
-            outlineRow.Range.Cells( _
-                1, _
-                colNodeID).value = _
-                    NodeID
+            outlineRow.Range.Cells(1, colNodeID).value = nodeID
 
         End If
 
         ' Parent is the most recent node one depth level above.
         If Depth = 0 Then
 
-            ParentID = _
-                vbNullString
+            ParentID = vbNullString
 
         Else
 
-            If Not lastNodeAtDepth.Exists( _
-                    CStr(Depth - 1)) Then
+            If Not lastNodeAtDepth.Exists(CStr(Depth - 1)) Then
 
                 Err.Raise _
                     vbObjectError + 1606, _
@@ -373,74 +276,37 @@ Public Sub RebuildTestHierarchy()
 
             End If
 
-            ParentID = _
-                CStr( _
-                    lastNodeAtDepth( _
-                        CStr(Depth - 1)))
+            ParentID = CStr(lastNodeAtDepth(CStr(Depth - 1)))
 
         End If
 
-        SortOrder = _
-            SortOrder + 1
-
-        parsedCount = _
-            parsedCount + 1
+        SortOrder = SortOrder + 1
+        parsedCount = parsedCount + 1
 
         If Depth > maximumDepth Then
             maximumDepth = Depth
         End If
 
-        Set hierarchyRow = _
-            hierarchy.ListRows.Add
+        Set hierarchyRow = hierarchy.ListRows.Add
 
         With hierarchyRow.Range
 
-            .Cells( _
-                1, _
-                outColTest).value = _
-                    currentTest
-
-            .Cells( _
-                1, _
-                outColNodeID).value = _
-                    NodeID
-
-            .Cells( _
-                1, _
-                outColParentID).value = _
-                    ParentID
-
-            .Cells( _
-                1, _
-                outColLabel).value = _
-                    labelText
-
-            .Cells( _
-                1, _
-                outColDepth).value = _
-                    Depth
-
-            .Cells( _
-                1, _
-                outColSort).value = _
-                    SortOrder
-
-            .Cells( _
-                1, _
-                outColSourceRow).value = _
-                    outlineRow.Range.Row
+            .Cells(1, outColTest).value = currentTest
+            .Cells(1, outColNodeID).value = nodeID
+            .Cells(1, outColParentID).value = ParentID
+            .Cells(1, outColLabel).value = labelText
+            .Cells(1, outColDepth).value = Depth
+            .Cells(1, outColSort).value = SortOrder
+            .Cells(1, outColSourceRow).value = outlineRow.Range.Row
 
         End With
 
-        lastNodeAtDepth( _
-            CStr(Depth)) = _
-                NodeID
+        lastNodeAtDepth(CStr(Depth)) = nodeID
 
         ' Remove branch state deeper than the current node.
         If lastNodeAtDepth.Count > 0 Then
 
-            keys = _
-                lastNodeAtDepth.keys
+            keys = lastNodeAtDepth.keys
 
             For Each key In keys
 
@@ -452,19 +318,15 @@ Public Sub RebuildTestHierarchy()
 
         End If
 
-        previousDepth = _
-            Depth
+        previousDepth = Depth
 
 
 NextOutlineRow:
 
     Next outlineRow
 
-    Application.EnableEvents = _
-        oldEnableEvents
-
-    Application.ScreenUpdating = _
-        oldScreenUpdating
+    Application.EnableEvents = oldEnableEvents
+    Application.ScreenUpdating = oldScreenUpdating
 
     Debug.Print String(70, "=")
     Debug.Print "TEST HIERARCHY REBUILD"
@@ -478,19 +340,13 @@ NextOutlineRow:
 
 Fail:
 
-    savedErrNumber = _
-        Err.Number
-
-    savedErrDescription = _
-        Err.Description
+    savedErrNumber = Err.Number
+    savedErrDescription = Err.description
 
     On Error Resume Next
 
-    Application.EnableEvents = _
-        oldEnableEvents
-
-    Application.ScreenUpdating = _
-        oldScreenUpdating
+    Application.EnableEvents = oldEnableEvents
+    Application.ScreenUpdating = oldScreenUpdating
 
     On Error GoTo 0
 
@@ -514,31 +370,25 @@ Private Sub ParseOutlineLine( _
     ByVal rawLine As String, _
     ByRef Depth As Long, _
     ByRef labelText As String, _
-    ByVal worksheetRow As Long _
+    ByVal WorksheetRow As Long _
 )
 
     Dim leadingSpaces As Long
     Dim firstNonSpace As String
 
     ' Tabs make indentation depth ambiguous.
-    If InStr( _
-            1, _
-            rawLine, _
-            vbTab, _
-            vbBinaryCompare) > 0 Then
+    If InStr(1, rawLine, vbTab, vbBinaryCompare) > 0 Then
 
         Err.Raise _
             vbObjectError + 1610, _
             "modTestHierarchy.ParseOutlineLine", _
             "Tabs are not permitted in Raw Line indentation." & _
             vbCrLf & _
-            "Worksheet row: " & worksheetRow
+            "Worksheet row: " & WorksheetRow
 
     End If
 
-    leadingSpaces = _
-        CountLeadingSpaces( _
-            rawLine)
+    leadingSpaces = CountLeadingSpaces(rawLine)
 
     If leadingSpaces = 0 Then
 
@@ -550,23 +400,16 @@ Private Sub ParseOutlineLine( _
                 "modTestHierarchy.ParseOutlineLine", _
                 "A depth-0 node must not begin with '-'." & _
                 vbCrLf & _
-                "Worksheet row: " & worksheetRow
+                "Worksheet row: " & WorksheetRow
 
         End If
 
-        Depth = _
-            0
-
-        labelText = _
-            Trim$(rawLine)
+        Depth = 0
+        labelText = Trim$(rawLine)
 
     Else
 
-        firstNonSpace = _
-            Mid$( _
-                rawLine, _
-                leadingSpaces + 1, _
-                1)
+        firstNonSpace = Mid$(rawLine, leadingSpaces + 1, 1)
 
         If firstNonSpace <> "-" Then
 
@@ -576,21 +419,16 @@ Private Sub ParseOutlineLine( _
                 "Indented Raw Line must use '-' after " & _
                 "its leading spaces." & _
                 vbCrLf & _
-                "Worksheet row: " & worksheetRow & _
+                "Worksheet row: " & WorksheetRow & _
                 vbCrLf & _
                 "Raw Line: " & rawLine
 
         End If
 
-        Depth = _
-            leadingSpaces
+        Depth = leadingSpaces
 
         ' Skip the bullet; Trim removes its following space.
-        labelText = _
-            Trim$( _
-                Mid$( _
-                    rawLine, _
-                    leadingSpaces + 2))
+        labelText = Trim$(Mid$(rawLine, leadingSpaces + 2))
 
     End If
 
@@ -603,32 +441,22 @@ Private Sub ParseOutlineLine( _
             "modTestHierarchy.ParseOutlineLine", _
             "Parsed test-step label is blank." & _
             vbCrLf & _
-            "Worksheet row: " & worksheetRow
+            "Worksheet row: " & WorksheetRow
 
     End If
 
 End Sub
 
 
-Private Function CountLeadingSpaces( _
-    ByVal textValue As String _
-) As Long
+Private Function CountLeadingSpaces(ByVal textValue As String) As Long
 
     Dim i As Long
 
     For i = 1 To Len(textValue)
 
-        If Mid$( _
-                textValue, _
-                i, _
-                1) <> " " Then
+        If Mid$(textValue, i, 1) <> " " Then Exit For
 
-            Exit For
-
-        End If
-
-        CountLeadingSpaces = _
-            CountLeadingSpaces + 1
+        CountLeadingSpaces = CountLeadingSpaces + 1
 
     Next i
 
@@ -648,29 +476,21 @@ Private Function GenerateNextNodeID( _
 
     Do
 
-        candidate = _
-            GENERATED_ID_PREFIX & _
-            Format$( _
-                nextNodeNumber, _
-                "000000")
+        candidate = GENERATED_ID_PREFIX & Format$(nextNodeNumber, "000000")
 
-        nextNodeNumber = _
-            nextNodeNumber + 1
+        nextNodeNumber = nextNodeNumber + 1
 
     Loop While usedIDs.Exists(candidate)
 
-    usedIDs.Add _
-        candidate, _
-        True
+    usedIDs.Add candidate, True
 
-    GenerateNextNodeID = _
-        candidate
+    GenerateNextNodeID = candidate
 
 End Function
 
 
 Private Sub UpdateNextGeneratedNodeNumber( _
-    ByVal NodeID As String, _
+    ByVal nodeID As String, _
     ByRef nextNodeNumber As Long _
 )
 
@@ -678,37 +498,19 @@ Private Sub UpdateNextGeneratedNodeNumber( _
     Dim existingNumber As Long
 
     If StrComp( _
-            Left$( _
-                NodeID, _
-                Len(GENERATED_ID_PREFIX)), _
+            Left$(nodeID, Len(GENERATED_ID_PREFIX)), _
             GENERATED_ID_PREFIX, _
-            vbTextCompare) <> 0 Then
+            vbTextCompare) <> 0 Then Exit Sub
 
-        Exit Sub
+    suffix = Mid$(nodeID, Len(GENERATED_ID_PREFIX) + 1)
 
-    End If
+    If Len(suffix) = 0 Then Exit Sub
+    If Not IsNumeric(suffix) Then Exit Sub
 
-    suffix = _
-        Mid$( _
-            NodeID, _
-            Len(GENERATED_ID_PREFIX) + 1)
-
-    If Len(suffix) = 0 Then
-        Exit Sub
-    End If
-
-    If Not IsNumeric(suffix) Then
-        Exit Sub
-    End If
-
-    existingNumber = _
-        CLng(suffix)
+    existingNumber = CLng(suffix)
 
     If existingNumber >= nextNodeNumber Then
-
-        nextNodeNumber = _
-            existingNumber + 1
-
+        nextNodeNumber = existingNumber + 1
     End If
 
 End Sub
@@ -718,36 +520,62 @@ End Sub
 ' INTERNAL HELPERS
 '============================================================
 
-Private Function FindHierarchyTable( _
-    ByVal tableName As String _
-) As ListObject
+Private Function FindHierarchyTable(ByVal tableName As String) As ListObject
 
     Dim ws As Worksheet
     Dim tbl As ListObject
 
     For Each ws In ThisWorkbook.Worksheets
 
-        Set tbl = _
-            Nothing
+        Set tbl = Nothing
 
         On Error Resume Next
 
-        Set tbl = _
-            ws.ListObjects( _
-                tableName)
+        Set tbl = ws.ListObjects(tableName)
 
         On Error GoTo 0
 
         If Not tbl Is Nothing Then
 
-            Set FindHierarchyTable = _
-                tbl
+            Set FindHierarchyTable = tbl
 
             Exit Function
 
         End If
 
     Next ws
+
+End Function
+
+Private Function OutlineContainsPopulatedLines(ByVal sourceTable As ListObject) As Boolean
+
+    Dim rawLineRange As Range
+    Dim rawLineValue As Variant
+    Dim rowIndex As Long
+
+    If sourceTable.DataBodyRange Is Nothing Then Exit Function
+
+    Set rawLineRange = sourceTable.ListColumns("Raw Line").DataBodyRange
+
+    If rawLineRange Is Nothing Then Exit Function
+
+    For rowIndex = 1 To rawLineRange.Rows.Count
+
+        rawLineValue = rawLineRange.Cells(rowIndex, 1).value2
+
+        If Not IsError(rawLineValue) Then
+
+            If Len(Trim$(CStr(rawLineValue))) > 0 Then
+
+                OutlineContainsPopulatedLines = True
+
+                Exit Function
+
+            End If
+
+        End If
+
+    Next rowIndex
 
 End Function
 
