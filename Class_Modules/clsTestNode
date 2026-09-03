@@ -18,79 +18,62 @@ Private mSortOrder As Long
 '============================================================
 
 Public Sub Initialize( _
-    ByVal TestName As String, _
-    ByVal NodeID As String, _
+    ByVal testName As String, _
+    ByVal nodeID As String, _
     ByVal ParentID As String, _
     ByVal labelText As String, _
     ByVal depthValue As Long, _
     ByVal sortValue As Long _
 )
 
-    mTest = _
-        TestName
-
-    mNodeID = _
-        NodeID
-
-    mParentID = _
-        ParentID
-
-    mLabel = _
-        labelText
-
-    mDepth = _
-        depthValue
-
-    mSortOrder = _
-        sortValue
+    mTest = testName
+    mNodeID = nodeID
+    mParentID = ParentID
+    mLabel = labelText
+    mDepth = depthValue
+    mSortOrder = sortValue
 
 End Sub
 
 
 Public Property Get Test() As String
 
-    Test = _
-        mTest
+    Test = mTest
 
 End Property
 
 
-Public Property Get NodeID() As String
+Public Property Get nodeID() As String
 
-    NodeID = _
-        mNodeID
+    nodeID = mNodeID
 
 End Property
 
 
 Public Property Get ParentID() As String
 
-    ParentID = _
-        mParentID
+    ParentID = mParentID
 
 End Property
 
 
 Public Property Get Label() As String
 
-    Label = _
-        mLabel
+    Label = mLabel
 
 End Property
 
 
 Public Property Get Depth() As Long
 
-    Depth = _
-        mDepth
+    Depth = mDepth
 
 End Property
 
 
 Public Property Get SortOrder() As Long
 
-    SortOrder = _
-        mSortOrder
+    SortOrder = mSortOrder
 
 End Property
 
