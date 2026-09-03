@@ -39,12 +39,12 @@ End Type
 
 
 Private Type IncidentRecordData
-    worksheetRow As Long
+    WorksheetRow As Long
 
     DateText As String
     UUT As String
-    SerialNumber As String
-    TestName As String
+    serialNumber As String
+    testName As String
 
     PathValues(1 To 5) As String
     PathIDs(1 To 5) As String
@@ -70,24 +70,15 @@ Public Sub ShowSimilarIncidentsForSelection()
 
     If ActiveWorkbook Is Nothing Then
 
-        MsgBox _
-            "No workbook is active.", _
-            vbInformation, _
-            "Similar Incidents"
+        MsgBox "No workbook is active.", vbInformation, "Similar Incidents"
 
         Exit Sub
 
     End If
 
-    If Not TryResolveSimilarIncidentSource( _
-            ActiveCell, _
-            sourceCell, _
-            failureReason) Then
+    If Not TryResolveSimilarIncidentSource(ActiveCell, sourceCell, failureReason) Then
 
-        MsgBox _
-            failureReason, _
-            vbInformation, _
-            "Similar Incidents"
+        MsgBox failureReason, vbInformation, "Similar Incidents"
 
         Exit Sub
 
@@ -115,7 +106,7 @@ ShowFailed:
         vbCrLf & vbCrLf & _
         "Error " & CStr(Err.Number) & _
         vbCrLf & _
-        Err.Description, _
+        Err.description, _
         vbCritical, _
         "Similar Incidents"
 
@@ -142,8 +133,7 @@ Public Function TryResolveSimilarIncidentSource( _
 
     If target Is Nothing Then
 
-        failureReason = _
-            "Select a troubleshooting record before running Similar Incidents."
+        failureReason = "Select a troubleshooting record before running Similar Incidents."
 
         Exit Function
 
@@ -153,20 +143,15 @@ Public Function TryResolveSimilarIncidentSource( _
 
     If Not (ws.Parent Is ThisWorkbook) Then
 
-        failureReason = _
-            "Select a record in this troubleshooting workbook."
+        failureReason = "Select a record in this troubleshooting workbook."
 
         Exit Function
 
     End If
 
-    If StrComp( _
-            ws.Name, _
-            INCIDENT_SHEET_NAME, _
-            vbTextCompare) <> 0 Then
+    If StrComp(ws.Name, INCIDENT_SHEET_NAME, vbTextCompare) <> 0 Then
 
-        failureReason = _
-            "Select a record on the TS Data worksheet."
+        failureReason = "Select a record on the TS Data worksheet."
 
         Exit Function
 
@@ -177,25 +162,17 @@ Public Function TryResolveSimilarIncidentSource( _
     firstDataRow = dataTable.HeaderRowRange.Row + 1
     lastDataRow = GetLastIncidentDataRow(dataTable)
 
-    If target.Row < firstDataRow _
-        Or target.Row > lastDataRow Then
+    If target.Row < firstDataRow Or target.Row > lastDataRow Then
 
-        failureReason = _
-            "Select a populated troubleshooting record row."
+        failureReason = "Select a populated troubleshooting record row."
 
         Exit Function
 
     End If
 
-    Set sourceRange = _
-        ws.Range( _
-            ws.Cells( _
-                target.Row, _
-                dataTable.Range.Column), _
-            ws.Cells( _
-                target.Row, _
-                dataTable.Range.Column + _
-                    dataTable.ListColumns.Count - 1))
+    Set sourceRange = ws.Range( _
+        ws.Cells(target.Row, dataTable.Range.Column), _
+        ws.Cells(target.Row, dataTable.Range.Column + dataTable.ListColumns.Count - 1))
 
     For Each cell In sourceRange.Cells
 
@@ -215,17 +192,13 @@ Public Function TryResolveSimilarIncidentSource( _
 
     If Not rowHasContent Then
 
-        failureReason = _
-            "Select a populated troubleshooting record row."
+        failureReason = "Select a populated troubleshooting record row."
 
         Exit Function
 
     End If
 
-    Set sourceCell = _
-        ws.Cells( _
-            target.Row, _
-            dataTable.Range.Column)
+    Set sourceCell = ws.Cells(target.Row, dataTable.Range.Column)
 
     TryResolveSimilarIncidentSource = True
 
@@ -265,9 +238,7 @@ Public Function FindSimilarIncidents( _
     Set ws = ThisWorkbook.Worksheets(INCIDENT_SHEET_NAME)
     Set dataTable = ws.ListObjects(INCIDENT_TABLE_NAME)
 
-    LoadIncidentColumnMap _
-        dataTable, _
-        columns
+    LoadIncidentColumnMap dataTable, columns
 
     firstDataRow = dataTable.HeaderRowRange.Row + 1
     lastDataRow = GetLastIncidentDataRow(dataTable)
@@ -283,8 +254,7 @@ Public Function FindSimilarIncidents( _
 
     sourceIndex = sourceCell.Row - firstDataRow + 1
 
-    If sourceIndex < 1 _
-        Or sourceCell.Row > lastDataRow Then
+    If sourceIndex < 1 Or sourceCell.Row > lastDataRow Then
 
         Err.Raise _
             vbObjectError + 2101, _
@@ -293,24 +263,13 @@ Public Function FindSimilarIncidents( _
 
     End If
 
-    Set dataRange = _
-        ws.Range( _
-            ws.Cells( _
-                firstDataRow, _
-                dataTable.Range.Column), _
-            ws.Cells( _
-                lastDataRow, _
-                dataTable.Range.Column + _
-                    dataTable.ListColumns.Count - 1))
+    Set dataRange = ws.Range( _
+        ws.Cells(firstDataRow, dataTable.Range.Column), _
+        ws.Cells(lastDataRow, dataTable.Range.Column + dataTable.ListColumns.Count - 1))
 
-    Set idRange = _
-        ws.Range( _
-            ws.Cells( _
-                firstDataRow, _
-                NodeIDColumn("Test Step")), _
-            ws.Cells( _
-                lastDataRow, _
-                NodeIDColumn("Sub Step 4")))
+    Set idRange = ws.Range( _
+        ws.Cells(firstDataRow, NodeIDColumn("Test Step")), _
+        ws.Cells(lastDataRow, NodeIDColumn("Sub Step 4")))
 
     dataValues = dataRange.value2
     idValues = idRange.value2
@@ -323,16 +282,10 @@ Public Function FindSimilarIncidents( _
         sourceCell.Row, _
         columns
 
-    Set sourceFaultTerms = _
-        GetIncidentTerms(sourceRecord.FaultText)
+    Set sourceFaultTerms = GetIncidentTerms(sourceRecord.FaultText)
+    Set sourceNotesTerms = GetIncidentTerms(sourceRecord.NotesText)
 
-    Set sourceNotesTerms = _
-        GetIncidentTerms(sourceRecord.NotesText)
-
-    sourceCriteriaCount = _
-        CountSourceCriteria( _
-            sourceRecord, _
-            sourceNotesTerms)
+    sourceCriteriaCount = CountSourceCriteria(sourceRecord, sourceNotesTerms)
 
     If sourceCriteriaCount < MIN_SOURCE_CRITERIA Then
 
@@ -348,10 +301,7 @@ Public Function FindSimilarIncidents( _
 
     End If
 
-    sourceSummary = _
-        BuildSourceSummary( _
-            sourceRecord, _
-            sourceNotesTerms)
+    sourceSummary = BuildSourceSummary(sourceRecord, sourceNotesTerms)
 
     recordsEvaluated = 0
 
@@ -359,14 +309,11 @@ Public Function FindSimilarIncidents( _
 
     For candidateIndex = 1 To UBound(dataValues, 1)
 
-        candidateWorksheetRow = _
-            firstDataRow + candidateIndex - 1
+        candidateWorksheetRow = firstDataRow + candidateIndex - 1
 
-        If candidateWorksheetRow <> sourceRecord.worksheetRow Then
+        If candidateWorksheetRow <> sourceRecord.WorksheetRow Then
 
-            If IncidentArrayRowHasContent( _
-                    dataValues, _
-                    candidateIndex) Then
+            If IncidentArrayRowHasContent(dataValues, candidateIndex) Then
 
                 recordsEvaluated = recordsEvaluated + 1
 
@@ -378,20 +325,15 @@ Public Function FindSimilarIncidents( _
                     candidateWorksheetRow, _
                     columns
 
-                Set candidateMatch = _
-                    BuildIncidentMatch( _
-                        sourceRecord, _
-                        candidateRecord, _
-                        sourceFaultTerms, _
-                        sourceNotesTerms, _
-                        sourceCriteriaCount)
+                Set candidateMatch = BuildIncidentMatch( _
+                    sourceRecord, _
+                    candidateRecord, _
+                    sourceFaultTerms, _
+                    sourceNotesTerms, _
+                    sourceCriteriaCount)
 
                 If Not candidateMatch Is Nothing Then
-
-                    AddRankedIncidentMatch _
-                        matches, _
-                        candidateMatch
-
+                    AddRankedIncidentMatch matches, candidateMatch
                 End If
 
             End If
@@ -405,9 +347,7 @@ Public Function FindSimilarIncidents( _
 End Function
 
 
-Public Sub OpenSimilarIncidentRow( _
-    ByVal worksheetRow As Long _
-)
+Public Sub OpenSimilarIncidentRow(ByVal WorksheetRow As Long)
 
     Dim ws As Worksheet
     Dim dataTable As ListObject
@@ -420,8 +360,7 @@ Public Sub OpenSimilarIncidentRow( _
     firstDataRow = dataTable.HeaderRowRange.Row + 1
     lastDataRow = GetLastIncidentDataRow(dataTable)
 
-    If worksheetRow < firstDataRow _
-        Or worksheetRow > lastDataRow Then
+    If WorksheetRow < firstDataRow Or WorksheetRow > lastDataRow Then
 
         MsgBox _
             "The selected historical record is no longer available.", _
@@ -434,10 +373,8 @@ Public Sub OpenSimilarIncidentRow( _
 
     ws.Activate
 
-    Application.Goto _
-        Reference:=ws.Cells( _
-            worksheetRow, _
-            dataTable.Range.Column), _
+    Application.GoTo _
+        Reference:=ws.Cells(WorksheetRow, dataTable.Range.Column), _
         Scroll:=True
 
 End Sub
@@ -470,79 +407,34 @@ Private Sub LoadIncidentRecord( _
     ByRef dataValues As Variant, _
     ByRef idValues As Variant, _
     ByVal rowIndex As Long, _
-    ByVal worksheetRow As Long, _
+    ByVal WorksheetRow As Long, _
     ByRef columns As IncidentColumnMap _
 )
 
     Dim pathLevel As Long
 
-    record.worksheetRow = worksheetRow
+    record.WorksheetRow = WorksheetRow
 
-    record.DateText = _
-        FormatIncidentDate( _
-            dataValues( _
-                rowIndex, _
-                columns.DateIndex))
-
-    record.UUT = _
-        IncidentText( _
-            dataValues( _
-                rowIndex, _
-                columns.UUTIndex))
-
-    record.SerialNumber = _
-        IncidentText( _
-            dataValues( _
-                rowIndex, _
-                columns.SerialNumberIndex))
-
-    record.TestName = _
-        IncidentText( _
-            dataValues( _
-                rowIndex, _
-                columns.TestIndex))
+    record.DateText = FormatIncidentDate(dataValues(rowIndex, columns.DateIndex))
+    record.UUT = IncidentText(dataValues(rowIndex, columns.UUTIndex))
+    record.serialNumber = IncidentText(dataValues(rowIndex, columns.SerialNumberIndex))
+    record.testName = IncidentText(dataValues(rowIndex, columns.TestIndex))
 
     For pathLevel = 1 To 5
 
         record.PathValues(pathLevel) = _
-            IncidentText( _
-                dataValues( _
-                    rowIndex, _
-                    columns.PathStartIndex + pathLevel - 1))
+            IncidentText(dataValues(rowIndex, columns.PathStartIndex + pathLevel - 1))
 
-        record.PathIDs(pathLevel) = _
-            IncidentText( _
-                idValues( _
-                    rowIndex, _
-                    pathLevel))
+        record.PathIDs(pathLevel) = IncidentText(idValues(rowIndex, pathLevel))
 
     Next pathLevel
 
     record.TestPath = BuildIncidentTestPath(record)
 
-    record.FaultText = _
-        IncidentText( _
-            dataValues( _
-                rowIndex, _
-                columns.FaultIndex))
-
-    record.CauseText = _
-        IncidentText( _
-            dataValues( _
-                rowIndex, _
-                columns.CauseIndex))
-
-    record.ResolutionText = _
-        IncidentText( _
-            dataValues( _
-                rowIndex, _
-                columns.ResolutionIndex))
-
-    record.NotesText = _
-        IncidentText( _
-            dataValues( _
-                rowIndex, _
-                columns.NotesIndex))
+    record.FaultText = IncidentText(dataValues(rowIndex, columns.FaultIndex))
+    record.CauseText = IncidentText(dataValues(rowIndex, columns.CauseIndex))
+    record.ResolutionText = IncidentText(dataValues(rowIndex, columns.ResolutionIndex))
+    record.NotesText = IncidentText(dataValues(rowIndex, columns.NotesIndex))
 
 End Sub
 
@@ -576,9 +468,7 @@ Private Function IncidentArrayRowHasContent( _
 End Function
 
 
-Private Function GetLastIncidentDataRow( _
-    ByVal dataTable As ListObject _
-) As Long
+Private Function GetLastIncidentDataRow(ByVal dataTable As ListObject) As Long
 
     Dim lastCell As Range
 
@@ -592,15 +482,14 @@ Private Function GetLastIncidentDataRow( _
 
     End If
 
-    Set lastCell = _
-        dataTable.DataBodyRange.Find( _
-            What:="*", _
-            After:=dataTable.DataBodyRange.Cells(1, 1), _
-            LookIn:=xlValues, _
-            LookAt:=xlPart, _
-            SearchOrder:=xlByRows, _
-            SearchDirection:=xlPrevious, _
-            MatchCase:=False)
+    Set lastCell = dataTable.DataBodyRange.Find( _
+        What:="*", _
+        After:=dataTable.DataBodyRange.Cells(1, 1), _
+        LookIn:=xlValues, _
+        LookAt:=xlPart, _
+        SearchOrder:=xlByRows, _
+        SearchDirection:=xlPrevious, _
+        MatchCase:=False)
 
     ' Edge Case Defense:
     ' DataBodyRange can exist while containing no populated cells.
@@ -650,22 +539,17 @@ Private Function BuildIncidentMatch( _
 
         possiblePoints = possiblePoints + WEIGHT_UUT
 
-        If IncidentValuesMatch( _
-                sourceRecord.UUT, _
-                candidateRecord.UUT) Then
+        If IncidentValuesMatch(sourceRecord.UUT, candidateRecord.UUT) Then
 
             earnedPoints = earnedPoints + WEIGHT_UUT
 
-            AppendReasonLine _
-                reasonsText, _
-                "Same UUT"
+            AppendReasonLine reasonsText, "Same UUT"
 
         Else
 
             AppendReasonLine _
                 differencesText, _
-                "UUT differs: " & _
-                DisplayIncidentValue(candidateRecord.UUT)
+                "UUT differs: " & DisplayIncidentValue(candidateRecord.UUT)
 
         End If
 
@@ -674,28 +558,21 @@ Private Function BuildIncidentMatch( _
     '----------------------------------------------------
     ' SERIAL NUMBER
     '----------------------------------------------------
-    If IsMeaningfulIncidentText(sourceRecord.SerialNumber) Then
+    If IsMeaningfulIncidentText(sourceRecord.serialNumber) Then
 
-        possiblePoints = _
-            possiblePoints + WEIGHT_SERIAL_NUMBER
+        possiblePoints = possiblePoints + WEIGHT_SERIAL_NUMBER
 
-        If IncidentValuesMatch( _
-                sourceRecord.SerialNumber, _
-                candidateRecord.SerialNumber) Then
+        If IncidentValuesMatch(sourceRecord.serialNumber, candidateRecord.serialNumber) Then
 
-            earnedPoints = _
-                earnedPoints + WEIGHT_SERIAL_NUMBER
+            earnedPoints = earnedPoints + WEIGHT_SERIAL_NUMBER
 
-            AppendReasonLine _
-                reasonsText, _
-                "Same serial number"
+            AppendReasonLine reasonsText, "Same serial number"
 
-        ElseIf IsMeaningfulIncidentText(candidateRecord.SerialNumber) Then
+        ElseIf IsMeaningfulIncidentText(candidateRecord.serialNumber) Then
 
             AppendReasonLine _
                 differencesText, _
-                "Serial number differs: " & _
-                candidateRecord.SerialNumber
+                "Serial number differs: " & candidateRecord.serialNumber
 
         End If
 
@@ -704,26 +581,21 @@ Private Function BuildIncidentMatch( _
     '----------------------------------------------------
     ' TEST
     '----------------------------------------------------
-    If IsMeaningfulIncidentText(sourceRecord.TestName) Then
+    If IsMeaningfulIncidentText(sourceRecord.testName) Then
 
         possiblePoints = possiblePoints + WEIGHT_TEST
 
-        If IncidentValuesMatch( _
-                sourceRecord.TestName, _
-                candidateRecord.TestName) Then
+        If IncidentValuesMatch(sourceRecord.testName, candidateRecord.testName) Then
 
             earnedPoints = earnedPoints + WEIGHT_TEST
 
-            AppendReasonLine _
-                reasonsText, _
-                "Same Test"
+            AppendReasonLine reasonsText, "Same Test"
 
         Else
 
             AppendReasonLine _
                 differencesText, _
-                "Test differs: " & _
-                DisplayIncidentValue(candidateRecord.TestName)
+                "Test differs: " & DisplayIncidentValue(candidateRecord.testName)
 
         End If
 
@@ -736,12 +608,11 @@ Private Function BuildIncidentMatch( _
 
         possiblePoints = possiblePoints + WEIGHT_TEST_PATH
 
-        criterionPoints = _
-            GetIncidentPathMatchPoints( _
-                sourceRecord, _
-                candidateRecord, _
-                reasonsText, _
-                differencesText)
+        criterionPoints = GetIncidentPathMatchPoints( _
+            sourceRecord, _
+            candidateRecord, _
+            reasonsText, _
+            differencesText)
 
         earnedPoints = earnedPoints + criterionPoints
 
@@ -754,21 +625,15 @@ Private Function BuildIncidentMatch( _
 
         possiblePoints = possiblePoints + WEIGHT_FAULT_EXACT
 
-        If IncidentValuesMatch( _
-                sourceRecord.FaultText, _
-                candidateRecord.FaultText) Then
+        If IncidentValuesMatch(sourceRecord.FaultText, candidateRecord.FaultText) Then
 
             earnedPoints = earnedPoints + WEIGHT_FAULT_EXACT
 
-            AppendReasonLine _
-                reasonsText, _
-                "Exact Fault match"
+            AppendReasonLine reasonsText, "Exact Fault match"
 
         ElseIf IsMeaningfulIncidentText(candidateRecord.FaultText) Then
 
-            AppendReasonLine _
-                differencesText, _
-                "Fault text differs"
+            AppendReasonLine differencesText, "Fault text differs"
 
         End If
 
@@ -781,18 +646,14 @@ Private Function BuildIncidentMatch( _
 
         possiblePoints = possiblePoints + WEIGHT_FAULT_TERMS
 
-        Set candidateFaultTerms = _
-            GetIncidentTerms(candidateRecord.FaultText)
+        Set candidateFaultTerms = GetIncidentTerms(candidateRecord.FaultText)
 
-        overlapRatio = _
-            GetIncidentTermOverlap( _
-                sourceFaultTerms, _
-                candidateFaultTerms, _
-                sharedTerms)
+        overlapRatio = GetIncidentTermOverlap( _
+            sourceFaultTerms, _
+            candidateFaultTerms, _
+            sharedTerms)
 
-        criterionPoints = _
-            RoundIncidentValue( _
-                WEIGHT_FAULT_TERMS * overlapRatio)
+        criterionPoints = RoundIncidentValue(WEIGHT_FAULT_TERMS * overlapRatio)
 
         earnedPoints = earnedPoints + criterionPoints
 
@@ -800,10 +661,7 @@ Private Function BuildIncidentMatch( _
 
             AppendReasonLine _
                 reasonsText, _
-                "Fault term overlap " & _
-                Format$(overlapRatio, "0%") & _
-                ": " & _
-                sharedTerms
+                "Fault term overlap " & Format$(overlapRatio, "0%") & ": " & sharedTerms
 
         End If
 
@@ -816,18 +674,14 @@ Private Function BuildIncidentMatch( _
 
         possiblePoints = possiblePoints + WEIGHT_NOTES_TERMS
 
-        Set candidateNotesTerms = _
-            GetIncidentTerms(candidateRecord.NotesText)
+        Set candidateNotesTerms = GetIncidentTerms(candidateRecord.NotesText)
 
-        overlapRatio = _
-            GetIncidentTermOverlap( _
-                sourceNotesTerms, _
-                candidateNotesTerms, _
-                sharedTerms)
+        overlapRatio = GetIncidentTermOverlap( _
+            sourceNotesTerms, _
+            candidateNotesTerms, _
+            sharedTerms)
 
-        criterionPoints = _
-            RoundIncidentValue( _
-                WEIGHT_NOTES_TERMS * overlapRatio)
+        criterionPoints = RoundIncidentValue(WEIGHT_NOTES_TERMS * overlapRatio)
 
         earnedPoints = earnedPoints + criterionPoints
 
@@ -835,47 +689,38 @@ Private Function BuildIncidentMatch( _
 
             AppendReasonLine _
                 reasonsText, _
-                "Notes term overlap " & _
-                Format$(overlapRatio, "0%") & _
-                ": " & _
-                sharedTerms
+                "Notes term overlap " & Format$(overlapRatio, "0%") & ": " & sharedTerms
 
         End If
 
     End If
 
-    If possiblePoints = 0 Then
-        Exit Function
-    End If
+    If possiblePoints = 0 Then Exit Function
 
-    scoreValue = _
-        RoundIncidentValue( _
-            earnedPoints * 100# / possiblePoints)
+    scoreValue = RoundIncidentValue(earnedPoints * 100# / possiblePoints)
 
-    If scoreValue < MIN_RESULT_SCORE Then
-        Exit Function
-    End If
+    If scoreValue < MIN_RESULT_SCORE Then Exit Function
 
     Set result = New clsIncidentMatch
 
-    result.Initialize _
-        candidateRecord.worksheetRow, _
-        scoreValue, _
-        sourceCriteriaCount, _
-        GetIncidentMatchLevel( _
-            scoreValue, _
-            sourceCriteriaCount), _
-        candidateRecord.DateText, _
-        candidateRecord.UUT, _
-        candidateRecord.SerialNumber, _
-        candidateRecord.TestName, _
-        candidateRecord.TestPath, _
-        candidateRecord.FaultText, _
-        candidateRecord.CauseText, _
-        candidateRecord.ResolutionText, _
-        candidateRecord.NotesText, _
-        reasonsText, _
-        differencesText
+    result.WorksheetRow = candidateRecord.WorksheetRow
+    result.Score = scoreValue
+    result.EvidenceCount = sourceCriteriaCount
+    result.MatchLevel = GetIncidentMatchLevel(scoreValue, sourceCriteriaCount)
+
+    result.DateText = candidateRecord.DateText
+    result.UUT = candidateRecord.UUT
+    result.serialNumber = candidateRecord.serialNumber
+    result.testName = candidateRecord.testName
+    result.TestPath = candidateRecord.TestPath
+
+    result.FaultText = candidateRecord.FaultText
+    result.CauseText = candidateRecord.CauseText
+    result.ResolutionText = candidateRecord.ResolutionText
+    result.NotesText = candidateRecord.NotesText
+
+    result.reasonsText = reasonsText
+    result.differencesText = differencesText
 
     Set BuildIncidentMatch = result
 
@@ -890,55 +735,81 @@ Private Function GetIncidentPathMatchPoints( _
 ) As Long
 
     Dim sourceDepth As Long
-    Dim commonDepth As Long
+    Dim sharedDepth As Long
     Dim pathLevel As Long
+    Dim levelOverlap As Double
+    Dim totalOverlap As Double
+    Dim pathOverlap As Double
+    Dim fullPathMatch As Boolean
 
     sourceDepth = GetIncidentPathDepth(sourceRecord)
+    fullPathMatch = True
 
     For pathLevel = 1 To sourceDepth
 
-        If IncidentPathLevelMatches( _
+        levelOverlap = HierarchySelectionOverlap( _
+            sourceRecord.PathValues(pathLevel), _
+            sourceRecord.PathIDs(pathLevel), _
+            candidateRecord.PathValues(pathLevel), _
+            candidateRecord.PathIDs(pathLevel))
+
+        If levelOverlap <= 0 Then
+            fullPathMatch = False
+            Exit For
+        End If
+
+        totalOverlap = totalOverlap + levelOverlap
+        sharedDepth = pathLevel
+
+        If Not IncidentPathLevelMatches( _
                 sourceRecord.PathValues(pathLevel), _
                 sourceRecord.PathIDs(pathLevel), _
                 candidateRecord.PathValues(pathLevel), _
                 candidateRecord.PathIDs(pathLevel)) Then
 
-            commonDepth = commonDepth + 1
+            fullPathMatch = False
 
-        Else
+        End If
 
-            Exit For
+        If pathLevel < sourceDepth Then
+
+            If Not HierarchyBranchSelectionsMatch( _
+                    IncidentPathFieldName(pathLevel), _
+                    sourceRecord.PathValues(pathLevel), _
+                    sourceRecord.PathIDs(pathLevel), _
+                    candidateRecord.PathValues(pathLevel), _
+                    candidateRecord.PathIDs(pathLevel)) Then
+
+                fullPathMatch = False
+                Exit For
+
+            End If
 
         End If
 
     Next pathLevel
 
-    If commonDepth = 0 Then
+    If sharedDepth = 0 Then
 
-        AppendReasonLine _
-            differencesText, _
-            "Test path differs"
+        AppendReasonLine differencesText, "Test path differs"
 
         Exit Function
 
     End If
 
-    GetIncidentPathMatchPoints = _
-        RoundIncidentValue( _
-            WEIGHT_TEST_PATH * commonDepth / sourceDepth)
+    pathOverlap = totalOverlap / sourceDepth
+    GetIncidentPathMatchPoints = RoundIncidentValue(WEIGHT_TEST_PATH * pathOverlap)
 
-    If commonDepth = sourceDepth Then
+    If fullPathMatch And sharedDepth = sourceDepth Then
 
-        AppendReasonLine _
-            reasonsText, _
-            "Source test path fully matches"
+        AppendReasonLine reasonsText, "Source test path fully matches"
 
     Else
 
         AppendReasonLine _
             reasonsText, _
-            "Shared test path through " & _
-            IncidentPathFieldName(commonDepth)
+            "Test path overlap " & Format$(pathOverlap, "0%") & _
+            " through " & IncidentPathFieldName(sharedDepth)
 
     End If
 
@@ -947,54 +818,38 @@ End Function
 
 Private Function IncidentPathLevelMatches( _
     ByVal sourceValue As String, _
-    ByVal sourceNodeID As String, _
+    ByVal sourceNodeIDs As String, _
     ByVal candidateValue As String, _
-    ByVal candidateNodeID As String _
+    ByVal candidateNodeIDs As String _
 ) As Boolean
 
-    If Len(sourceNodeID) > 0 _
-        And Len(candidateNodeID) > 0 Then
-
-        IncidentPathLevelMatches = _
-            IncidentValuesMatch( _
-                sourceNodeID, _
-                candidateNodeID)
-
-    Else
-
-        IncidentPathLevelMatches = _
-            IncidentValuesMatch( _
-                sourceValue, _
-                candidateValue)
-
-    End If
+    IncidentPathLevelMatches = _
+        (Abs(HierarchySelectionOverlap( _
+            sourceValue, _
+            sourceNodeIDs, _
+            candidateValue, _
+            candidateNodeIDs) - 1#) < 0.0001)
 
 End Function
 
 
-Private Function RoundIncidentValue( _
-    ByVal sourceValue As Double _
-) As Long
+Private Function RoundIncidentValue(ByVal sourceValue As Double) As Long
 
-    RoundIncidentValue = _
-        CLng( _
-            Fix(sourceValue + 0.5))
+    RoundIncidentValue = CLng(Fix(sourceValue + 0.5))
 
 End Function
 
 
 Private Function GetIncidentMatchLevel( _
     ByVal scoreValue As Long, _
-    ByVal evidenceCount As Long _
+    ByVal EvidenceCount As Long _
 ) As String
 
-    If scoreValue >= 80 _
-        And evidenceCount >= 4 Then
+    If scoreValue >= 80 And EvidenceCount >= 4 Then
 
         GetIncidentMatchLevel = "Strong Match"
 
-    ElseIf scoreValue >= 65 _
-        And evidenceCount >= 3 Then
+    ElseIf scoreValue >= 65 And EvidenceCount >= 3 Then
 
         GetIncidentMatchLevel = "Good Match"
 
@@ -1025,14 +880,10 @@ Private Sub AddRankedIncidentMatch( _
         Set existingMatch = matches(matchIndex)
 
         If candidateMatch.Score > existingMatch.Score _
-            Or _
-            (candidateMatch.Score = existingMatch.Score _
-                And candidateMatch.worksheetRow < _
-                    existingMatch.worksheetRow) Then
+            Or (candidateMatch.Score = existingMatch.Score _
+                And candidateMatch.WorksheetRow < existingMatch.WorksheetRow) Then
 
-            matches.Add _
-                candidateMatch, _
-                Before:=matchIndex
+            matches.Add candidateMatch, Before:=matchIndex
 
             inserted = True
 
@@ -1066,11 +917,11 @@ Private Function CountSourceCriteria( _
         CountSourceCriteria = CountSourceCriteria + 1
     End If
 
-    If IsMeaningfulIncidentText(sourceRecord.SerialNumber) Then
+    If IsMeaningfulIncidentText(sourceRecord.serialNumber) Then
         CountSourceCriteria = CountSourceCriteria + 1
     End If
 
-    If IsMeaningfulIncidentText(sourceRecord.TestName) Then
+    If IsMeaningfulIncidentText(sourceRecord.testName) Then
         CountSourceCriteria = CountSourceCriteria + 1
     End If
 
@@ -1097,45 +948,24 @@ Private Function BuildSourceSummary( _
     Dim summaryText As String
     Dim criteriaText As String
 
-    AppendPlainLine _
-        summaryText, _
-        "Worksheet Row: " & _
-        CStr(sourceRecord.worksheetRow)
+    AppendPlainLine summaryText, "Worksheet Row: " & CStr(sourceRecord.WorksheetRow)
 
     If Len(sourceRecord.DateText) > 0 Then
-
-        AppendPlainLine _
-            summaryText, _
-            "Date: " & _
-            sourceRecord.DateText
-
+        AppendPlainLine summaryText, "Date: " & sourceRecord.DateText
     End If
 
     AppendPlainLine _
         summaryText, _
-        "UUT: " & _
-        DisplayIncidentValue(sourceRecord.UUT) & _
-        "    SN: " & _
-        DisplayIncidentValue(sourceRecord.SerialNumber) & _
-        "    Test: " & _
-        DisplayIncidentValue(sourceRecord.TestName)
+        "UUT: " & DisplayIncidentValue(sourceRecord.UUT) & _
+        "    SN: " & DisplayIncidentValue(sourceRecord.serialNumber) & _
+        "    Test: " & DisplayIncidentValue(sourceRecord.testName)
 
     If Len(sourceRecord.TestPath) > 0 Then
-
-        AppendPlainLine _
-            summaryText, _
-            "Path: " & _
-            sourceRecord.TestPath
-
+        AppendPlainLine summaryText, "Path: " & sourceRecord.TestPath
     End If
 
     If Len(sourceRecord.FaultText) > 0 Then
-
-        AppendPlainLine _
-            summaryText, _
-            "Fault: " & _
-            sourceRecord.FaultText
-
+        AppendPlainLine summaryText, "Fault: " & sourceRecord.FaultText
     End If
 
     AppendSourceCriterionName _
@@ -1146,12 +976,12 @@ Private Function BuildSourceSummary( _
     AppendSourceCriterionName _
         criteriaText, _
         "Serial Number", _
-        IsMeaningfulIncidentText(sourceRecord.SerialNumber)
+        IsMeaningfulIncidentText(sourceRecord.serialNumber)
 
     AppendSourceCriterionName _
         criteriaText, _
         "Test", _
-        IsMeaningfulIncidentText(sourceRecord.TestName)
+        IsMeaningfulIncidentText(sourceRecord.testName)
 
     AppendSourceCriterionName _
         criteriaText, _
@@ -1168,11 +998,7 @@ Private Function BuildSourceSummary( _
         "Notes", _
         (sourceNotesTerms.Count > 0)
 
-    summaryText = _
-        summaryText & _
-        vbCrLf & vbCrLf & _
-        "Criteria used: " & _
-        criteriaText
+    summaryText = summaryText & vbCrLf & vbCrLf & "Criteria used: " & criteriaText
 
     BuildSourceSummary = summaryText
 
@@ -1185,9 +1011,7 @@ Private Sub AppendSourceCriterionName( _
     ByVal includeCriterion As Boolean _
 )
 
-    If Not includeCriterion Then
-        Exit Sub
-    End If
+    If Not includeCriterion Then Exit Sub
 
     If Len(criteriaText) > 0 Then
         criteriaText = criteriaText & ", "
@@ -1202,27 +1026,21 @@ End Sub
 ' PATH HELPERS
 '============================================================
 
-Private Function BuildIncidentTestPath( _
-    ByRef record As IncidentRecordData _
-) As String
+Private Function BuildIncidentTestPath(ByRef record As IncidentRecordData) As String
 
     Dim pathText As String
     Dim pathLevel As Long
 
     For pathLevel = 1 To 5
 
-        If Not IsMeaningfulIncidentText( _
-                record.PathValues(pathLevel)) Then
-
-            Exit For
-
-        End If
+        If Not IsMeaningfulIncidentText(record.PathValues(pathLevel)) Then Exit For
 
         If Len(pathText) > 0 Then
             pathText = pathText & " > "
         End If
 
-        pathText = pathText & record.PathValues(pathLevel)
+        pathText = pathText & FormatHierarchySelectionForDisplay( _
+            record.PathValues(pathLevel))
 
     Next pathLevel
 
@@ -1231,20 +1049,13 @@ Private Function BuildIncidentTestPath( _
 End Function
 
 
-Private Function GetIncidentPathDepth( _
-    ByRef record As IncidentRecordData _
-) As Long
+Private Function GetIncidentPathDepth(ByRef record As IncidentRecordData) As Long
 
     Dim pathLevel As Long
 
     For pathLevel = 1 To 5
 
-        If Not IsMeaningfulIncidentText( _
-                record.PathValues(pathLevel)) Then
-
-            Exit For
-
-        End If
+        If Not IsMeaningfulIncidentText(record.PathValues(pathLevel)) Then Exit For
 
         GetIncidentPathDepth = pathLevel
 
@@ -1253,9 +1064,7 @@ Private Function GetIncidentPathDepth( _
 End Function
 
 
-Private Function IncidentPathFieldName( _
-    ByVal pathLevel As Long _
-) As String
+Private Function IncidentPathFieldName(ByVal pathLevel As Long) As String
 
     Select Case pathLevel
 
@@ -1283,9 +1092,7 @@ End Function
 ' TEXT COMPARISON
 '============================================================
 
-Private Function GetIncidentTerms( _
-    ByVal sourceText As String _
-) As Collection
+Private Function GetIncidentTerms(ByVal sourceText As String) As Collection
 
     Dim terms As Collection
     Dim rawTerms As Variant
@@ -1316,12 +1123,8 @@ Private Function GetIncidentTerms( _
 
             If Not IsIncidentStopWord(token) Then
 
-                If Not IncidentCollectionContains( _
-                        terms, _
-                        token) Then
-
+                If Not IncidentCollectionContains(terms, token) Then
                     terms.Add token
-
                 End If
 
             End If
@@ -1335,9 +1138,7 @@ Private Function GetIncidentTerms( _
 End Function
 
 
-Private Function NormalizeIncidentTokenText( _
-    ByVal sourceText As String _
-) As String
+Private Function NormalizeIncidentTokenText(ByVal sourceText As String) As String
 
     Dim normalizedText As String
     Dim character As String
@@ -1349,12 +1150,9 @@ Private Function NormalizeIncidentTokenText( _
         character = Mid$(sourceText, characterIndex, 1)
         characterCode = AscW(character)
 
-        If _
-            (characterCode >= 48 And characterCode <= 57) _
-            Or _
-            (characterCode >= 65 And characterCode <= 90) _
-            Or _
-            (characterCode >= 97 And characterCode <= 122) Then
+        If (characterCode >= 48 And characterCode <= 57) _
+            Or (characterCode >= 65 And characterCode <= 90) _
+            Or (characterCode >= 97 And characterCode <= 122) Then
 
             normalizedText = normalizedText & LCase$(character)
 
@@ -1368,18 +1166,8 @@ Private Function NormalizeIncidentTokenText( _
 
     normalizedText = Trim$(normalizedText)
 
-    Do While InStr( _
-            1, _
-            normalizedText, _
-            "  ", _
-            vbBinaryCompare) > 0
-
-        normalizedText = _
-            Replace( _
-                normalizedText, _
-                "  ", _
-                " ")
-
+    Do While InStr(1, normalizedText, "  ", vbBinaryCompare) > 0
+        normalizedText = Replace(normalizedText, "  ", " ")
     Loop
 
     NormalizeIncidentTokenText = normalizedText
@@ -1387,9 +1175,7 @@ Private Function NormalizeIncidentTokenText( _
 End Function
 
 
-Private Function IsIncidentStopWord( _
-    ByVal token As String _
-) As Boolean
+Private Function IsIncidentStopWord(ByVal token As String) As Boolean
 
     Select Case token
 
@@ -1419,15 +1205,11 @@ Private Function GetIncidentTermOverlap( _
 
     sharedTerms = vbNullString
 
-    If sourceTerms.Count = 0 Then
-        Exit Function
-    End If
+    If sourceTerms.Count = 0 Then Exit Function
 
     For Each sourceTerm In sourceTerms
 
-        If IncidentCollectionContains( _
-                candidateTerms, _
-                CStr(sourceTerm)) Then
+        If IncidentCollectionContains(candidateTerms, CStr(sourceTerm)) Then
 
             sharedCount = sharedCount + 1
 
@@ -1459,10 +1241,7 @@ Private Function IncidentCollectionContains( _
 
     For Each value In values
 
-        If StrComp( _
-                CStr(value), _
-                searchValue, _
-                vbTextCompare) = 0 Then
+        If StrComp(CStr(value), searchValue, vbTextCompare) = 0 Then
 
             IncidentCollectionContains = True
 
@@ -1481,71 +1260,42 @@ Private Function IncidentValuesMatch( _
 ) As Boolean
 
     If Not IsMeaningfulIncidentText(firstValue) _
-        Or Not IsMeaningfulIncidentText(secondValue) Then
+        Or Not IsMeaningfulIncidentText(secondValue) Then Exit Function
 
-        Exit Function
-
-    End If
-
-    IncidentValuesMatch = _
-        (StrComp( _
-            Trim$(firstValue), _
-            Trim$(secondValue), _
-            vbTextCompare) = 0)
+    IncidentValuesMatch = (StrComp( _
+        Trim$(firstValue), _
+        Trim$(secondValue), _
+        vbTextCompare) = 0)
 
 End Function
 
 
-Private Function IsMeaningfulIncidentText( _
-    ByVal sourceText As String _
-) As Boolean
+Private Function IsMeaningfulIncidentText(ByVal sourceText As String) As Boolean
 
     sourceText = Trim$(sourceText)
 
-    IsMeaningfulIncidentText = _
-        (Len(sourceText) > 0) _
-        And _
-        (StrComp( _
-            sourceText, _
-            "-", _
-            vbBinaryCompare) <> 0)
+    IsMeaningfulIncidentText = Len(sourceText) > 0 _
+        And StrComp(sourceText, "-", vbBinaryCompare) <> 0
 
 End Function
 
 
-Private Function IncidentText( _
-    ByVal cellValue As Variant _
-) As String
+Private Function IncidentText(ByVal cellValue As Variant) As String
 
-    If IsError(cellValue) _
-        Or IsEmpty(cellValue) Then
-
-        Exit Function
-
-    End If
+    If IsError(cellValue) Or IsEmpty(cellValue) Then Exit Function
 
     IncidentText = Trim$(CStr(cellValue))
 
 End Function
 
 
-Private Function FormatIncidentDate( _
-    ByVal cellValue As Variant _
-) As String
+Private Function FormatIncidentDate(ByVal cellValue As Variant) As String
 
-    If IsError(cellValue) _
-        Or IsEmpty(cellValue) Then
-
-        Exit Function
-
-    End If
+    If IsError(cellValue) Or IsEmpty(cellValue) Then Exit Function
 
     If IsDate(cellValue) Then
 
-        FormatIncidentDate = _
-            Format$( _
-                CDate(cellValue), _
-                "dd-mmm-yyyy")
+        FormatIncidentDate = Format$(CDate(cellValue), "dd-mmm-yyyy")
 
     Else
 
@@ -1556,9 +1306,7 @@ Private Function FormatIncidentDate( _
 End Function
 
 
-Private Function DisplayIncidentValue( _
-    ByVal sourceText As String _
-) As String
+Private Function DisplayIncidentValue(ByVal sourceText As String) As String
 
     If Len(Trim$(sourceText)) = 0 Then
 
@@ -1578,9 +1326,7 @@ Private Sub AppendReasonLine( _
     ByVal lineText As String _
 )
 
-    If Len(lineText) = 0 Then
-        Exit Sub
-    End If
+    If Len(lineText) = 0 Then Exit Sub
 
     If Len(targetText) > 0 Then
         targetText = targetText & vbCrLf
@@ -1596,9 +1342,7 @@ Private Sub AppendPlainLine( _
     ByVal lineText As String _
 )
 
-    If Len(lineText) = 0 Then
-        Exit Sub
-    End If
+    If Len(lineText) = 0 Then Exit Sub
 
     If Len(targetText) > 0 Then
         targetText = targetText & vbCrLf
@@ -1628,10 +1372,7 @@ Public Sub TestIncidentSimilarityEngine()
 
     On Error GoTo TestFailed
 
-    If Not TryResolveSimilarIncidentSource( _
-            ActiveCell, _
-            sourceCell, _
-            failureReason) Then
+    If Not TryResolveSimilarIncidentSource(ActiveCell, sourceCell, failureReason) Then
 
         Debug.Print "FAIL  " & failureReason
 
@@ -1639,12 +1380,11 @@ Public Sub TestIncidentSimilarityEngine()
 
     End If
 
-    Set matches = _
-        FindSimilarIncidents( _
-            sourceCell, _
-            sourceSummary, _
-            sourceCriteriaCount, _
-            recordsEvaluated)
+    Set matches = FindSimilarIncidents( _
+        sourceCell, _
+        sourceSummary, _
+        sourceCriteriaCount, _
+        recordsEvaluated)
 
     Debug.Print String$(70, "=")
     Debug.Print "SIMILAR INCIDENTS ENGINE TEST"
@@ -1659,12 +1399,9 @@ Public Sub TestIncidentSimilarityEngine()
 
         Debug.Print _
             Format$(matchIndex, "00") & _
-            "  " & _
-            Format$(match.Score, "000") & _
-            "%  Row " & _
-            CStr(match.worksheetRow) & _
-            "  " & _
-            match.MatchLevel
+            "  " & Format$(match.Score, "000") & _
+            "%  Row " & CStr(match.WorksheetRow) & _
+            "  " & match.MatchLevel
 
         Debug.Print match.reasonsText
 
@@ -1677,12 +1414,7 @@ Public Sub TestIncidentSimilarityEngine()
 
 TestFailed:
 
-    Debug.Print _
-        "FAIL  Error " & _
-        CStr(Err.Number) & _
-        "  " & _
-        Err.Description
+    Debug.Print "FAIL  Error " & CStr(Err.Number) & "  " & Err.description
 
 End Sub
-
 
