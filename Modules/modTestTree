@@ -12,9 +12,7 @@ Private Const TEST_HIERARCHY_TABLE As String = "tbl_TestHierarchy"
 ' PUBLIC INTERFACE
 '============================================================
 
-Public Function GetRootNodes( _
-    ByVal TestName As String _
-) As Collection
+Public Function GetRootNodes(ByVal testName As String) As Collection
 
     Dim result As Collection
 
@@ -26,67 +24,44 @@ Public Function GetRootNodes( _
 
     Dim node As clsTestNode
 
-    Set result = _
-        New Collection
+    Set result = New Collection
 
-    Set tbl = _
-        FindTestHierarchyTable()
+    Set tbl = FindTestHierarchyTable()
 
     If tbl Is Nothing Then
 
         Err.Raise _
             vbObjectError + 1700, _
             "modTestTree.GetRootNodes", _
-            "Could not find table '" & _
-            TEST_HIERARCHY_TABLE & "'."
+            "Could not find table '" & TEST_HIERARCHY_TABLE & "'."
 
     End If
 
-    colTest = _
-        tbl.ListColumns( _
-            "Test" _
-        ).Index
-
-    colParentID = _
-        tbl.ListColumns( _
-            "Parent ID" _
-        ).Index
+    colTest = tbl.ListColumns("Test").Index
+    colParentID = tbl.ListColumns("Parent ID").Index
 
     For Each rw In tbl.ListRows
 
         If StrComp( _
-                Trim$(CStr( _
-                    rw.Range.Cells( _
-                        1, _
-                        colTest).value2)), _
-                Trim$(TestName), _
+                Trim$(CStr(rw.Range.Cells(1, colTest).value2)), _
+                Trim$(testName), _
                 vbTextCompare) = 0 _
-            And Len(Trim$(CStr( _
-                rw.Range.Cells( _
-                    1, _
-                    colParentID).value2))) = 0 Then
+            And Len(Trim$(CStr(rw.Range.Cells(1, colParentID).value2))) = 0 Then
 
-            Set node = _
-                BuildNodeFromHierarchyRow( _
-                    rw, _
-                    tbl)
+            Set node = BuildNodeFromHierarchyRow(rw, tbl)
 
-            result.Add _
-                node
+            result.Add node
 
         End If
 
     Next rw
 
-    Set GetRootNodes = _
-        result
+    Set GetRootNodes = result
 
 End Function
 
 
-Public Function GetChildNodes( _
-    ByVal parentNodeID As String _
-) As Collection
+Public Function GetChildNodes(ByVal parentNodeID As String) As Collection
 
     Dim result As Collection
 
@@ -97,19 +72,16 @@ Public Function GetChildNodes( _
 
     Dim node As clsTestNode
 
-    Set result = _
-        New Collection
+    Set result = New Collection
 
-    Set tbl = _
-        FindTestHierarchyTable()
+    Set tbl = FindTestHierarchyTable()
 
     If tbl Is Nothing Then
 
         Err.Raise _
             vbObjectError + 1701, _
             "modTestTree.GetChildNodes", _
-            "Could not find table '" & _
-            TEST_HIERARCHY_TABLE & "'."
+            "Could not find table '" & TEST_HIERARCHY_TABLE & "'."
 
     End If
 
@@ -117,91 +89,66 @@ Public Function GetChildNodes( _
     ' Blank Node ID must not resolve root nodes as children.
     If Len(Trim$(parentNodeID)) = 0 Then
 
-        Set GetChildNodes = _
-            result
+        Set GetChildNodes = result
 
         Exit Function
 
     End If
 
-    colParentID = _
-        tbl.ListColumns( _
-            "Parent ID" _
-        ).Index
+    colParentID = tbl.ListColumns("Parent ID").Index
 
     For Each rw In tbl.ListRows
 
         If StrComp( _
-                Trim$(CStr( _
-                    rw.Range.Cells( _
-                        1, _
-                        colParentID).value2)), _
+                Trim$(CStr(rw.Range.Cells(1, colParentID).value2)), _
                 Trim$(parentNodeID), _
                 vbTextCompare) = 0 Then
 
-            Set node = _
-                BuildNodeFromHierarchyRow( _
-                    rw, _
-                    tbl)
+            Set node = BuildNodeFromHierarchyRow(rw, tbl)
 
-            result.Add _
-                node
+            result.Add node
 
         End If
 
     Next rw
 
-    Set GetChildNodes = _
-        result
+    Set GetChildNodes = result
 
 End Function
 
 
-Public Function HasChildNodes( _
-    ByVal NodeID As String _
-) As Boolean
+Public Function HasChildNodes(ByVal nodeID As String) As Boolean
 
     Dim tbl As ListObject
     Dim rw As listRow
 
     Dim colParentID As Long
 
-    Set tbl = _
-        FindTestHierarchyTable()
+    Set tbl = FindTestHierarchyTable()
 
     If tbl Is Nothing Then
 
         Err.Raise _
             vbObjectError + 1702, _
             "modTestTree.HasChildNodes", _
-            "Could not find table '" & _
-            TEST_HIERARCHY_TABLE & "'."
+            "Could not find table '" & TEST_HIERARCHY_TABLE & "'."
 
     End If
 
     ' Edge Case Defense:
     ' Blank Node ID must not match root-node Parent IDs.
-    If Len(Trim$(NodeID)) = 0 Then
-        Exit Function
-    End If
+    If Len(Trim$(nodeID)) = 0 Then Exit Function
 
-    colParentID = _
-        tbl.ListColumns( _
-            "Parent ID" _
-        ).Index
+    colParentID = tbl.ListColumns("Parent ID").Index
 
     For Each rw In tbl.ListRows
 
         If StrComp( _
-                Trim$(CStr( _
-                    rw.Range.Cells( _
-                        1, _
-                        colParentID).value2)), _
-                Trim$(NodeID), _
+                Trim$(CStr(rw.Range.Cells(1, colParentID).value2)), _
+                Trim$(nodeID), _
                 vbTextCompare) = 0 Then
 
-            HasChildNodes = _
-                True
+            HasChildNodes = True
 
             Exit Function
 
@@ -212,51 +159,36 @@ Public Function HasChildNodes( _
 End Function
 
 
-Public Function GetNodeByID( _
-    ByVal NodeID As String _
-) As clsTestNode
+Public Function GetNodeByID(ByVal nodeID As String) As clsTestNode
 
     Dim tbl As ListObject
     Dim rw As listRow
 
     Dim colNodeID As Long
 
-    Set tbl = _
-        FindTestHierarchyTable()
+    Set tbl = FindTestHierarchyTable()
 
     If tbl Is Nothing Then
 
         Err.Raise _
             vbObjectError + 1703, _
             "modTestTree.GetNodeByID", _
-            "Could not find table '" & _
-            TEST_HIERARCHY_TABLE & "'."
+            "Could not find table '" & TEST_HIERARCHY_TABLE & "'."
 
     End If
 
-    If Len(Trim$(NodeID)) = 0 Then
-        Exit Function
-    End If
+    If Len(Trim$(nodeID)) = 0 Then Exit Function
 
-    colNodeID = _
-        tbl.ListColumns( _
-            "Node ID" _
-        ).Index
+    colNodeID = tbl.ListColumns("Node ID").Index
 
     For Each rw In tbl.ListRows
 
         If StrComp( _
-                Trim$(CStr( _
-                    rw.Range.Cells( _
-                        1, _
-                        colNodeID).value2)), _
-                Trim$(NodeID), _
+                Trim$(CStr(rw.Range.Cells(1, colNodeID).value2)), _
+                Trim$(nodeID), _
                 vbTextCompare) = 0 Then
 
-            Set GetNodeByID = _
-                BuildNodeFromHierarchyRow( _
-                    rw, _
-                    tbl)
+            Set GetNodeByID = BuildNodeFromHierarchyRow(rw, tbl)
 
             Exit Function
 
@@ -278,31 +210,17 @@ Private Function BuildNodeFromHierarchyRow( _
 
     Dim node As clsTestNode
 
-    Set node = _
-        New clsTestNode
+    Set node = New clsTestNode
 
     node.Initialize _
-        CStr(rw.Range.Cells( _
-            1, _
-            tbl.ListColumns("Test").Index).value2), _
-        CStr(rw.Range.Cells( _
-            1, _
-            tbl.ListColumns("Node ID").Index).value2), _
-        CStr(rw.Range.Cells( _
-            1, _
-            tbl.ListColumns("Parent ID").Index).value2), _
-        CStr(rw.Range.Cells( _
-            1, _
-            tbl.ListColumns("Label").Index).value2), _
-        CLng(rw.Range.Cells( _
-            1, _
-            tbl.ListColumns("Depth").Index).value2), _
-        CLng(rw.Range.Cells( _
-            1, _
-            tbl.ListColumns("Sort Order").Index).value2)
+        CStr(rw.Range.Cells(1, tbl.ListColumns("Test").Index).value2), _
+        CStr(rw.Range.Cells(1, tbl.ListColumns("Node ID").Index).value2), _
+        CStr(rw.Range.Cells(1, tbl.ListColumns("Parent ID").Index).value2), _
+        CStr(rw.Range.Cells(1, tbl.ListColumns("Label").Index).value2), _
+        CLng(rw.Range.Cells(1, tbl.ListColumns("Depth").Index).value2), _
+        CLng(rw.Range.Cells(1, tbl.ListColumns("Sort Order").Index).value2)
 
-    Set BuildNodeFromHierarchyRow = _
-        node
+    Set BuildNodeFromHierarchyRow = node
 
 End Function
 
@@ -314,21 +232,17 @@ Private Function FindTestHierarchyTable() As ListObject
 
     For Each ws In ThisWorkbook.Worksheets
 
-        Set tbl = _
-            Nothing
+        Set tbl = Nothing
 
         On Error Resume Next
 
-        Set tbl = _
-            ws.ListObjects( _
-                TEST_HIERARCHY_TABLE)
+        Set tbl = ws.ListObjects(TEST_HIERARCHY_TABLE)
 
         On Error GoTo 0
 
         If Not tbl Is Nothing Then
 
-            Set FindTestHierarchyTable = _
-                tbl
+            Set FindTestHierarchyTable = tbl
 
             Exit Function
 
@@ -352,141 +266,113 @@ Public Sub TestTreeEngine()
     Debug.Print "TEST TREE ENGINE"
     Debug.Print String(70, "=")
 
-    Set nodes = _
-        GetRootNodes( _
-            "Functional (Red)")
+    Set nodes = GetRootNodes("Functional (Red)")
 
     If nodes.Count > 0 Then
 
-        Set node = _
-            nodes(1)
+        Set node = nodes(1)
 
-        If node.NodeID = "TN-000001" _
+        If node.nodeID = "TN-000001" _
             And node.Label = "7.2 - Test Setup" Then
 
             Debug.Print _
                 "PASS  First Functional (Red) root = " & _
-                node.NodeID & _
-                " [" & node.Label & "]"
+                node.nodeID & " [" & node.Label & "]"
 
         Else
 
-            Debug.Print _
-                "FAIL  Unexpected first Functional (Red) root."
+            Debug.Print "FAIL  Unexpected first Functional (Red) root."
 
         End If
 
     Else
 
-        Debug.Print _
-            "FAIL  Functional (Red) returned no root nodes."
+        Debug.Print "FAIL  Functional (Red) returned no root nodes."
 
     End If
 
-    Set nodes = _
-        GetChildNodes( _
-            "TN-000001")
+    Set nodes = GetChildNodes("TN-000001")
 
     If nodes.Count = 2 Then
 
-        Debug.Print _
-            "PASS  TN-000001 has 2 direct children."
+        Debug.Print "PASS  TN-000001 has 2 direct children."
 
     Else
 
-        Debug.Print _
-            "FAIL  TN-000001 expected 2 children; got " & _
-            nodes.Count
+        Debug.Print "FAIL  TN-000001 expected 2 children; got " & nodes.Count
 
     End If
 
     If nodes.Count >= 2 Then
 
-        If nodes(1).NodeID = "TN-000002" _
+        If nodes(1).nodeID = "TN-000002" _
             And nodes(1).Label = "7.3 - Enable PDU" _
-            And nodes(2).NodeID = "TN-000007" _
+            And nodes(2).nodeID = "TN-000007" _
             And nodes(2).Label = "7.6 - Warm Start" Then
 
-            Debug.Print _
-                "PASS  TN-000001 child identities correct."
+            Debug.Print "PASS  TN-000001 child identities correct."
 
         Else
 
-            Debug.Print _
-                "FAIL  TN-000001 child identities incorrect."
+            Debug.Print "FAIL  TN-000001 child identities incorrect."
 
         End If
 
     End If
 
-    Set nodes = _
-        GetChildNodes( _
-            "TN-000002")
+    Set nodes = GetChildNodes("TN-000002")
 
     If nodes.Count = 4 Then
 
-        Debug.Print _
-            "PASS  TN-000002 has 4 direct children."
+        Debug.Print "PASS  TN-000002 has 4 direct children."
 
     Else
 
-        Debug.Print _
-            "FAIL  TN-000002 expected 4 children; got " & _
-            nodes.Count
+        Debug.Print "FAIL  TN-000002 expected 4 children; got " & nodes.Count
 
     End If
 
     If Not HasChildNodes("TN-000003") Then
 
-        Debug.Print _
-            "PASS  TN-000003 is a leaf."
+        Debug.Print "PASS  TN-000003 is a leaf."
 
     Else
 
-        Debug.Print _
-            "FAIL  TN-000003 unexpectedly has children."
+        Debug.Print "FAIL  TN-000003 unexpectedly has children."
 
     End If
 
     If HasChildNodes("TN-000015") Then
 
-        Debug.Print _
-            "PASS  TN-000015 has children."
+        Debug.Print "PASS  TN-000015 has children."
 
     Else
 
-        Debug.Print _
-            "FAIL  TN-000015 should have children."
+        Debug.Print "FAIL  TN-000015 should have children."
 
     End If
 
-    Set nodes = _
-        GetRootNodes( _
-            "Functional (Black)")
+    Set nodes = GetRootNodes("Functional (Black)")
 
     If nodes.Count > 0 Then
 
-        Set node = _
-            nodes(1)
+        Set node = nodes(1)
 
         If node.Label = "Check Engineering Flags" Then
 
             Debug.Print _
                 "PASS  First Functional (Black) root = " & _
-                node.NodeID & _
-                " [" & node.Label & "]"
+                node.nodeID & " [" & node.Label & "]"
 
         Else
 
-            Debug.Print _
-                "FAIL  Unexpected first Functional (Black) root."
+            Debug.Print "FAIL  Unexpected first Functional (Black) root."
 
         End If
 
     Else
 
-        Debug.Print _
-            "FAIL  Functional (Black) returned no root nodes."
+        Debug.Print "FAIL  Functional (Black) returned no root nodes."
 
     End If
 
