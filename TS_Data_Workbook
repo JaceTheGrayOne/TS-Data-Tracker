@@ -2,313 +2,398 @@ Option Explicit
 
 
 '============================================================
+' MODULE CONSTANTS
+'============================================================
+
+Private Const FIRST_RECORD_ROW As Long = 2
+
+Private Const COL_DATE As Long = 1
+Private Const COL_UUT As Long = 2
+Private Const COL_SN As Long = 3
+Private Const COL_FAILURE_TYPE As Long = 4
+Private Const COL_TEST As Long = 5
+Private Const COL_TEST_STEP As Long = 6
+Private Const COL_SUB_STEP_3 As Long = 9
+Private Const COL_SUB_STEP_4 As Long = 10
+Private Const COL_LAST_RECORD_FIELD As Long = 14
+
+Private Const COL_FIRST_HIERARCHY_FIELD As Long = COL_TEST
+Private Const COL_FIRST_NODE_SYNC_FIELD As Long = COL_TEST_STEP
+Private Const COL_LAST_RECONCILE_FIELD As Long = COL_SUB_STEP_3
+Private Const COL_LAST_HIERARCHY_FIELD As Long = COL_SUB_STEP_4
+
+Private Const CHANGE_UUT As Long = 1
+Private Const CHANGE_SN As Long = 2
+Private Const CHANGE_FAILURE_TYPE As Long = 4
+Private Const CHANGE_TEST As Long = 8
+Private Const CHANGE_TEST_STEP As Long = 16
+Private Const CHANGE_SUB_STEP_1 As Long = 32
+Private Const CHANGE_SUB_STEP_2 As Long = 64
+Private Const CHANGE_SUB_STEP_3 As Long = 128
+Private Const CHANGE_SUB_STEP_4 As Long = 256
+
+Private Const CHANGE_HIERARCHY_FIELDS As Long = CHANGE_TEST + CHANGE_TEST_STEP + CHANGE_SUB_STEP_1 + _
+    CHANGE_SUB_STEP_2 + CHANGE_SUB_STEP_3 + CHANGE_SUB_STEP_4
+
+Private Const CHANGE_STATE_FIELDS As Long = CHANGE_FAILURE_TYPE + CHANGE_HIERARCHY_FIELDS
+
+
+'============================================================
 ' WORKSHEET EVENTS
 '============================================================
 
-Private Sub Worksheet_Change( _
-    ByVal target As Range _
-)
+Private Sub Worksheet_Change(ByVal target As Range)
 
-    Dim watchedRange As Range
-    Dim changedCell As Range
-
-    Dim rowsToReconcile As Object
+    Dim entryRange As Range
+    Dim boundedRange As Range
+    Dim changedRange As Range
+    Dim changedArea As Range
+    Dim changedRows As Object
     Dim rowKey As Variant
-
-    Dim fieldName As String
-    Dim reconcileColumn As Long
-
+    Dim rowNumber As Long
+    Dim firstChangedRow As Long
+    Dim lastChangedRow As Long
+    Dim columnNumber As Long
+    Dim changedColumns As Long
+    Dim lastTrackedRow As Long
+    Dim previousEnableEvents As Boolean
+    Dim previousScreenUpdating As Boolean
+    Dim applicationStateSaved As Boolean
     Dim savedErrNumber As Long
     Dim savedErrDescription As String
 
-    Set watchedRange = _
-        Intersect( _
-            target, _
-            Application.Union( _
-                Me.columns(2), _
-                Me.columns(3), _
-                Me.Range("D:I")))
+    On Error GoTo Cleanup
 
-    If watchedRange Is Nothing Then
-        Exit Sub
-    End If
+    Set entryRange = Me.Range(Me.Cells(FIRST_RECORD_ROW, COL_UUT), Me.Cells(Me.Rows.Count, COL_SUB_STEP_4))
+    Set changedRange = Intersect(target, entryRange)
 
-    On Error GoTo CleanUp
+    If changedRange Is Nothing Then Exit Sub
+
+    lastTrackedRow = GetLastTrackedRecordRow(changedRange)
+
+    If lastTrackedRow < FIRST_RECORD_ROW Then Exit Sub
+
+    Set boundedRange = Me.Range(Me.Cells(FIRST_RECORD_ROW, COL_UUT), Me.Cells(lastTrackedRow, COL_SUB_STEP_4))
+    Set changedRange = Intersect(changedRange, boundedRange)
+
+    If changedRange Is Nothing Then Exit Sub
+
+    Set changedRows = CreateObject("Scripting.Dictionary")
+
+    For Each changedArea In changedRange.Areas
+
+        changedColumns = 0
+
+        For columnNumber = changedArea.Column To changedArea.Column + changedArea.columns.Count - 1
+            changedColumns = changedColumns Or CLng(2 ^ (columnNumber - COL_UUT))
+        Next columnNumber
+
+        firstChangedRow = changedArea.Row
+        lastChangedRow = changedArea.Row + changedArea.Rows.Count - 1
+
+        For rowNumber = firstChangedRow To lastChangedRow
+
+            If changedRows.Exists(rowNumber) Then
+                changedRows(rowNumber) = CLng(changedRows(rowNumber)) Or changedColumns
+            Else
+                changedRows(rowNumber) = changedColumns
+            End If
+
+        Next rowNumber
+
+    Next changedArea
+
+    If changedRows.Count = 0 Then Exit Sub
+
+    previousEnableEvents = Application.EnableEvents
+    previousScreenUpdating = Application.ScreenUpdating
+    applicationStateSaved = True
 
     Application.EnableEvents = False
+    Application.ScreenUpdating = False
 
-    '----------------------------------------------------
-    ' SINGLE-CELL CHANGE
-    '----------------------------------------------------
-    If watchedRange.CountLarge = 1 Then
+    ' Row processing begins after the complete edit is known so explicitly supplied descendants remain available.
+    For Each rowKey In changedRows.keys
 
-        Set changedCell = _
-            watchedRange.Cells(1, 1)
+        rowNumber = rowKey
 
-        If changedCell.Row < 2 Then
-            GoTo CleanUp
-        End If
+        ProcessChangedRow rowNumber, CLng(changedRows(rowKey))
 
-        If changedCell.Column = 3 Then
+    Next rowKey
 
-            IgnoreCNNumberAsTextError _
-                changedCell
 
-            GoTo CleanUp
+Cleanup:
 
-        End If
+    savedErrNumber = Err.Number
+    savedErrDescription = Err.description
 
-        fieldName = _
-            SheetFieldName( _
-                changedCell.Column)
+    If applicationStateSaved Then
 
-        If Len(fieldName) = 0 Then
-            GoTo CleanUp
-        End If
+        On Error Resume Next
 
-        If changedCell.Column = 2 Then
+        Application.ScreenUpdating = previousScreenUpdating
+        Application.EnableEvents = previousEnableEvents
 
-            UpdateRecordDateFromUUT _
-                changedCell
-
-        End If
-
-        If changedCell.Column >= 5 _
-            And changedCell.Column <= 9 Then
-
-            SyncNodeIdentityForField _
-                Me, _
-                changedCell.Row, _
-                fieldName
-
-        End If
-
-        ' D:H can invalidate subordinate hierarchy fields.
-        If changedCell.Column >= 4 _
-            And changedCell.Column <= 8 Then
-
-            ReconcileAfterChange _
-                Me, _
-                changedCell.Row, _
-                fieldName
-
-        End If
-
-        ApplyThemeToCell _
-            changedCell, _
-            fieldName
-
-    '----------------------------------------------------
-    ' MULTI-CELL CHANGE
-    '----------------------------------------------------
-    Else
-
-        Set rowsToReconcile = _
-            CreateObject( _
-                "Scripting.Dictionary")
-
-        For Each changedCell In watchedRange.Cells
-
-            If changedCell.Row >= 2 Then
-
-                If changedCell.Column = 3 Then
-
-                    IgnoreCNNumberAsTextError _
-                        changedCell
-
-                Else
-
-                    fieldName = _
-                        SheetFieldName( _
-                            changedCell.Column)
-
-                    If Len(fieldName) > 0 Then
-
-                        If changedCell.Column = 2 Then
-
-                            UpdateRecordDateFromUUT _
-                                changedCell
-
-                        End If
-
-                        If changedCell.Column >= 5 _
-                            And changedCell.Column <= 9 Then
-
-                            SyncNodeIdentityForField _
-                                Me, _
-                                changedCell.Row, _
-                                fieldName
-
-                        End If
-
-                        ApplyThemeToCell _
-                            changedCell, _
-                            fieldName
-
-                        ' Bulk clears reconcile once from the highest
-                        ' changed parent field in each affected row.
-                        If Len(Trim$(CStr( _
-                                changedCell.value2))) = 0 Then
-
-                            If changedCell.Column >= 4 _
-                                And changedCell.Column <= 8 Then
-
-                                rowKey = _
-                                    CStr(changedCell.Row)
-
-                                If Not rowsToReconcile.Exists( _
-                                        rowKey) Then
-
-                                    rowsToReconcile.Add _
-                                        rowKey, _
-                                        changedCell.Column
-
-                                ElseIf changedCell.Column < _
-                                        CLng( _
-                                            rowsToReconcile( _
-                                                rowKey)) Then
-
-                                    rowsToReconcile( _
-                                        rowKey) = _
-                                            changedCell.Column
-
-                                End If
-
-                            End If
-
-                        End If
-
-                    End If
-
-                End If
-
-            End If
-
-        Next changedCell
-
-        For Each rowKey In rowsToReconcile.keys
-
-            reconcileColumn = _
-                CLng( _
-                    rowsToReconcile( _
-                        rowKey))
-
-            fieldName = _
-                FieldNameFromColumn( _
-                    reconcileColumn)
-
-            If Len(fieldName) > 0 Then
-
-                ReconcileAfterChange _
-                    Me, _
-                    CLng(rowKey), _
-                    fieldName
-
-            End If
-
-        Next rowKey
+        On Error GoTo 0
 
     End If
-
-
-CleanUp:
-
-    savedErrNumber = _
-        Err.Number
-
-    savedErrDescription = _
-        Err.Description
-
-    Application.EnableEvents = True
 
     If savedErrNumber <> 0 Then
 
-        MsgBox _
-            "Worksheet update failed." & _
-            vbCrLf & vbCrLf & _
-            "Error " & CStr(savedErrNumber) & _
-            vbCrLf & _
-            savedErrDescription, _
-            vbCritical, _
-            "TS Data Error"
+        MsgBox "Worksheet update failed." & vbCrLf & vbCrLf & _
+            "Error " & CStr(savedErrNumber) & vbCrLf & savedErrDescription, _
+            vbCritical, "TS Data Error"
 
     End If
 
 End Sub
 
 
-Private Sub Worksheet_BeforeDoubleClick( _
-    ByVal target As Range, _
-    Cancel As Boolean _
-)
+Private Sub Worksheet_BeforeDoubleClick(ByVal target As Range, Cancel As Boolean)
 
-    If target.CountLarge <> 1 Then
-        Exit Sub
-    End If
+    If target.Row < FIRST_RECORD_ROW Then Exit Sub
 
-    If target.Row < 2 Then
-        Exit Sub
-    End If
-
-    ' Custom picker fields: UUT and Test hierarchy.
     Select Case target.Column
 
-        Case 2, 4, 5, 6, 7, 8, 9
+        Case COL_UUT
+
+            Cancel = True
+            StartGuidedEntry target
+
+        Case COL_SN
+
+            Cancel = True
+            OpenSerialNumberEntry target
+
+        Case COL_FAILURE_TYPE To COL_SUB_STEP_4
+
+            Cancel = True
+            OpenPickerForCell target
 
         Case Else
-
             Exit Sub
 
     End Select
 
-    Cancel = _
-        True
+End Sub
 
-    OpenPickerForCell _
-        target
+
+'============================================================
+' ROW PROCESSING
+'============================================================
+
+Private Sub ProcessChangedRow(ByVal rowNumber As Long, ByVal changedColumns As Long)
+
+    Dim hierarchyChanged As Boolean
+    Dim stateChanged As Boolean
+    Dim hierarchySuppressed As Boolean
+
+    If (changedColumns And CHANGE_UUT) <> 0 Then
+        UpdateRecordDateFromUUT Me.Cells(rowNumber, COL_UUT)
+    End If
+
+    If (changedColumns And CHANGE_SN) <> 0 Then
+        IgnoreCNNumberAsTextError Me.Cells(rowNumber, COL_SN)
+    End If
+
+    hierarchyChanged = (changedColumns And CHANGE_HIERARCHY_FIELDS) <> 0
+    stateChanged = (changedColumns And CHANGE_STATE_FIELDS) <> 0
+
+    If stateChanged Then
+
+        ApplyFailureTypeState Me, rowNumber
+
+        hierarchySuppressed = HierarchyIsSuppressedForRow(rowNumber)
+
+        If hierarchyChanged And Not hierarchySuppressed Then
+            ProcessHierarchyChanges rowNumber, changedColumns
+        End If
+
+    End If
+
+    ApplyChangedCellThemes rowNumber, changedColumns, hierarchySuppressed
+
+    If stateChanged Then
+        ApplyHierarchyRowLayout Me, rowNumber
+    End If
+
+End Sub
+
+
+Private Sub ProcessHierarchyChanges(ByVal rowNumber As Long, ByVal changedColumns As Long)
+
+    Dim columnNumber As Long
+    Dim columnFlag As Long
+    Dim childFlag As Long
+    Dim fieldName As String
+
+    For columnNumber = COL_FIRST_HIERARCHY_FIELD To COL_LAST_HIERARCHY_FIELD
+
+        columnFlag = CLng(2 ^ (columnNumber - COL_UUT))
+
+        If (changedColumns And columnFlag) <> 0 Then
+
+            fieldName = FieldNameFromColumn(columnNumber)
+
+            If columnNumber <= COL_LAST_RECONCILE_FIELD Then
+
+                childFlag = CLng(2 ^ ((columnNumber + 1) - COL_UUT))
+
+                If (changedColumns And childFlag) = 0 Then
+                    ReconcileAfterChange Me, rowNumber, fieldName
+                ElseIf columnNumber >= COL_FIRST_NODE_SYNC_FIELD Then
+                    SyncNodeIdentityForField Me, rowNumber, fieldName
+                End If
+
+            Else
+                SyncNodeIdentityForField Me, rowNumber, fieldName
+            End If
+
+        End If
+
+    Next columnNumber
+
+End Sub
+
+
+Private Sub ApplyChangedCellThemes(ByVal rowNumber As Long, ByVal changedColumns As Long, _
+    ByVal hierarchySuppressed As Boolean)
+
+    Dim columnNumber As Long
+    Dim columnFlag As Long
+    Dim fieldName As String
+
+    For columnNumber = COL_UUT To COL_LAST_HIERARCHY_FIELD
+
+        columnFlag = CLng(2 ^ (columnNumber - COL_UUT))
+
+        If (changedColumns And columnFlag) <> 0 Then
+
+            If Not (hierarchySuppressed And columnNumber >= COL_FIRST_HIERARCHY_FIELD) Then
+
+                fieldName = FieldNameFromColumn(columnNumber)
+
+                If Len(fieldName) > 0 Then
+                    ApplyThemeToCell Me.Cells(rowNumber, columnNumber), fieldName
+                End If
+
+            End If
+
+        End If
+
+    Next columnNumber
 
 End Sub
 
 
 '============================================================
-' INTERNAL HELPERS
+' RANGE BOUNDING
 '============================================================
 
-Private Function SheetFieldName( _
-    ByVal columnNumber As Long _
-) As String
+Private Function GetLastTrackedRecordRow(ByVal changedRange As Range) As Long
 
-    If columnNumber = 2 Then
+    Dim changedArea As Range
+    Dim searchRange As Range
+    Dim lastCell As Range
+    Dim lastTrackedRow As Long
+    Dim lastChangedRow As Long
+    Dim firstNodeIDColumn As Long
+    Dim lastNodeIDColumn As Long
+    Dim fullEntryRowCount As Long
 
-        SheetFieldName = _
-            "UUT"
+    lastTrackedRow = FIRST_RECORD_ROW - 1
 
-    Else
+    ' Visible record data and hidden Node IDs keep whole-column edits bounded to active records.
+    Set searchRange = Me.Range(Me.Cells(FIRST_RECORD_ROW, COL_DATE), Me.Cells(Me.Rows.Count, COL_LAST_RECORD_FIELD))
 
-        SheetFieldName = _
-            FieldNameFromColumn( _
-                columnNumber)
+    Set lastCell = searchRange.Find(What:="*", After:=searchRange.Cells(1, 1), _
+        LookIn:=xlValues, LookAt:=xlPart, SearchOrder:=xlByRows, _
+        SearchDirection:=xlPrevious, MatchCase:=False, SearchFormat:=False)
+
+    If Not lastCell Is Nothing Then
+        lastTrackedRow = lastCell.Row
+    End If
+
+    firstNodeIDColumn = NodeIDColumn("Test Step")
+    lastNodeIDColumn = NodeIDColumn("Sub Step 4")
+
+    If firstNodeIDColumn > 0 And lastNodeIDColumn >= firstNodeIDColumn Then
+
+        Set searchRange = Me.Range(Me.Cells(FIRST_RECORD_ROW, firstNodeIDColumn), _
+            Me.Cells(Me.Rows.Count, lastNodeIDColumn))
+
+        Set lastCell = searchRange.Find(What:="*", After:=searchRange.Cells(1, 1), _
+            LookIn:=xlValues, LookAt:=xlPart, SearchOrder:=xlByRows, _
+            SearchDirection:=xlPrevious, MatchCase:=False, SearchFormat:=False)
+
+        If Not lastCell Is Nothing Then
+
+            If lastCell.Row > lastTrackedRow Then
+                lastTrackedRow = lastCell.Row
+            End If
+
+        End If
 
     End If
 
+    fullEntryRowCount = Me.Rows.Count - FIRST_RECORD_ROW + 1
+
+    ' Edge Case Defense:
+    ' A finite target area preserves rows whose final stored values were removed by the edit.
+    For Each changedArea In changedRange.Areas
+
+        If changedArea.Rows.CountLarge < fullEntryRowCount Then
+
+            lastChangedRow = changedArea.Row + changedArea.Rows.Count - 1
+
+            If lastChangedRow > lastTrackedRow Then
+                lastTrackedRow = lastChangedRow
+            End If
+
+        End If
+
+    Next changedArea
+
+    GetLastTrackedRecordRow = lastTrackedRow
+
 End Function
 
-Private Sub UpdateRecordDateFromUUT( _
-    ByVal uutCell As Range _
-)
+
+'============================================================
+' STATE HELPERS
+'============================================================
+
+Private Function HierarchyIsSuppressedForRow(ByVal rowNumber As Long) As Boolean
+
+    Dim failureValue As Variant
+    Dim failureType As String
+
+    failureValue = Me.Cells(rowNumber, COL_FAILURE_TYPE).value2
+
+    If IsError(failureValue) Or IsEmpty(failureValue) Then Exit Function
+
+    failureType = Trim$(CStr(failureValue))
+
+    If Len(failureType) = 0 Then Exit Function
+
+    HierarchyIsSuppressedForRow = FailureTypeSuppressesTestHierarchy(failureType)
+
+End Function
+
+
+Private Sub UpdateRecordDateFromUUT(ByVal uutCell As Range)
 
     Dim dateCell As Range
-
     Dim recordDate As Date
-    Dim monthCode As String
+    Dim uutValue As Variant
 
-    Set dateCell = _
-        Me.Cells( _
-            uutCell.Row, _
-            1)
+    Set dateCell = Me.Cells(uutCell.Row, COL_DATE)
 
-    If Len(Trim$(CStr( _
-            uutCell.value2))) = 0 Then
+    uutValue = uutCell.value2
+
+    If IsError(uutValue) Then Exit Sub
+
+    If Len(Trim$(CStr(uutValue))) = 0 Then
 
         dateCell.ClearContents
 
@@ -316,51 +401,20 @@ Private Sub UpdateRecordDateFromUUT( _
 
     End If
 
-    If Len(Trim$(CStr( _
-            dateCell.value2))) > 0 Then
+    If Not IsEmpty(dateCell.value2) Then Exit Sub
 
-        Exit Sub
+    recordDate = Date
 
-    End If
-
-    recordDate = _
-        Date
-
-    monthCode = _
-        Choose( _
-            Month(recordDate), _
-            "JAN", _
-            "FEB", _
-            "MAR", _
-            "APR", _
-            "MAY", _
-            "JUN", _
-            "JUL", _
-            "AUG", _
-            "SEP", _
-            "OCT", _
-            "NOV", _
-            "DEC")
-
-    dateCell.NumberFormat = _
-        "dd""" & monthCode & """yyyy"
-
-    dateCell.value2 = _
-        CDbl(recordDate)
+    dateCell.NumberFormat = "dd""" & UCase$(Format$(recordDate, "mmm")) & """yyyy"
+    dateCell.value2 = CDbl(recordDate)
 
 End Sub
 
-Private Sub IgnoreCNNumberAsTextError( _
-    ByVal cnCell As Range _
-)
 
-    If cnCell.Errors.item( _
-            xlNumberAsText).value Then
+Private Sub IgnoreCNNumberAsTextError(ByVal cnCell As Range)
 
-        cnCell.Errors.item( _
-            xlNumberAsText).Ignore = _
-                True
-
+    If cnCell.Errors.item(xlNumberAsText).value Then
+        cnCell.Errors.item(xlNumberAsText).Ignore = True
     End If
 
 End Sub
