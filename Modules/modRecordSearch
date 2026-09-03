@@ -57,7 +57,7 @@ Public Function ApplyRecordSearch( _
     Dim lastDataRow As Long
 
     Dim rowIndex As Long
-    Dim worksheetRow As Long
+    Dim WorksheetRow As Long
     Dim hideBlockStart As Long
 
     Dim rowMatches As Boolean
@@ -68,17 +68,13 @@ Public Function ApplyRecordSearch( _
     Dim errorNumber As Long
     Dim errorDescription As String
 
+    Application.ScreenUpdating = False
+
     On Error GoTo SearchFailed
 
-    normalizedQuery = _
-        NormalizeRecordSearchQuery( _
-            searchText)
-
-    normalizedLRUFilter = _
-        Trim$(lruFilter)
-
-    normalizedTestFilter = _
-        Trim$(testFilter)
+    normalizedQuery = NormalizeRecordSearchQuery(searchText)
+    normalizedLRUFilter = Trim$(lruFilter)
+    normalizedTestFilter = Trim$(testFilter)
 
     If Len(normalizedQuery) = 0 _
         And Len(normalizedLRUFilter) = 0 _
@@ -92,13 +88,8 @@ Public Function ApplyRecordSearch( _
 
     End If
 
-    Set ws = _
-        ThisWorkbook.Worksheets( _
-            SEARCH_SHEET_NAME)
-
-    Set dataTable = _
-        ws.ListObjects( _
-            SEARCH_TABLE_NAME)
+    Set ws = ThisWorkbook.Worksheets(SEARCH_SHEET_NAME)
+    Set dataTable = ws.ListObjects(SEARCH_TABLE_NAME)
 
     ws.Activate
 
@@ -113,34 +104,17 @@ Public Function ApplyRecordSearch( _
     End If
 
     ' Restore only rows hidden by the previous search.
-    RestoreSearchHiddenRows _
-        ws
+    RestoreSearchHiddenRows ws
 
-    firstDataRow = _
-        dataTable.HeaderRowRange.Row + 1
+    firstDataRow = dataTable.HeaderRowRange.Row + 1
+    lastDataRow = GetLastRecordDataRow(dataTable)
 
-    lastDataRow = _
-        GetLastRecordDataRow( _
-            dataTable)
+    lruColumnIndex = dataTable.ListColumns("UUT").Index
+    testColumnIndex = dataTable.ListColumns("Test").Index
 
-    lruColumnIndex = _
-        dataTable.ListColumns( _
-            "UUT" _
-        ).Index
-
-    testColumnIndex = _
-        dataTable.ListColumns( _
-            "Test" _
-        ).Index
-
-    mSearchQuery = _
-        normalizedQuery
-
-    mSearchLRUFilter = _
-        normalizedLRUFilter
-
-    mSearchTestFilter = _
-        normalizedTestFilter
+    mSearchQuery = normalizedQuery
+    mSearchLRUFilter = normalizedLRUFilter
+    mSearchTestFilter = normalizedTestFilter
 
     mSearchMatchCount = 0
 
@@ -157,38 +131,21 @@ Public Function ApplyRecordSearch( _
         ws.ShowAllData
     End If
 
-    Set dataRange = _
-        ws.Range( _
-            ws.Cells( _
-                firstDataRow, _
-                dataTable.Range.Column), _
-            ws.Cells( _
-                lastDataRow, _
-                dataTable.Range.Column + _
-                    dataTable.ListColumns.Count - 1))
+    Set dataRange = ws.Range( _
+        ws.Cells(firstDataRow, dataTable.Range.Column), _
+        ws.Cells(lastDataRow, dataTable.Range.Column + dataTable.ListColumns.Count - 1))
 
-    dataValues = _
-        dataRange.value2
+    dataValues = dataRange.value2
 
-    hasSearchTerms = _
-        (Len(normalizedQuery) > 0)
+    hasSearchTerms = (Len(normalizedQuery) > 0)
 
     If hasSearchTerms Then
-
-        searchTerms = _
-            Split( _
-                normalizedQuery, _
-                " ")
-
+        searchTerms = Split(normalizedQuery, " ")
     End If
 
-    previousScreenUpdating = _
-        Application.ScreenUpdating
+     Application.ScreenUpdating = False
 
-    Application.ScreenUpdating = False
-
-    Set mSearchHiddenBlocks = _
-        New Collection
+    Set mSearchHiddenBlocks = New Collection
 
     hideBlockStart = 0
 
@@ -197,36 +154,27 @@ Public Function ApplyRecordSearch( _
     '----------------------------------------------------
     For rowIndex = 1 To UBound(dataValues, 1)
 
-        worksheetRow = _
-            firstDataRow + _
-            rowIndex - 1
+        WorksheetRow = firstDataRow + rowIndex - 1
 
-        rowMatches = _
-            RecordRowMatchesCriteria( _
-                dataValues, _
-                rowIndex, _
-                searchTerms, _
-                hasSearchTerms, _
-                lruColumnIndex, _
-                normalizedLRUFilter, _
-                testColumnIndex, _
-                normalizedTestFilter)
+        rowMatches = RecordRowMatchesCriteria( _
+            dataValues, _
+            rowIndex, _
+            searchTerms, _
+            hasSearchTerms, _
+            lruColumnIndex, _
+            normalizedLRUFilter, _
+            testColumnIndex, _
+            normalizedTestFilter)
 
-        rowAlreadyHidden = _
-            CBool( _
-                ws.Rows(worksheetRow).Hidden)
+        rowAlreadyHidden = CBool(ws.Rows(WorksheetRow).Hidden)
 
         If rowMatches Then
 
-            mSearchMatchCount = _
-                mSearchMatchCount + 1
+            mSearchMatchCount = mSearchMatchCount + 1
 
             If hideBlockStart > 0 Then
 
-                HideSearchRowBlock _
-                    ws, _
-                    hideBlockStart, _
-                    worksheetRow - 1
+                HideSearchRowBlock ws, hideBlockStart, WorksheetRow - 1
 
                 hideBlockStart = 0
 
@@ -239,10 +187,7 @@ Public Function ApplyRecordSearch( _
 
                 If hideBlockStart > 0 Then
 
-                    HideSearchRowBlock _
-                        ws, _
-                        hideBlockStart, _
-                        worksheetRow - 1
+                    HideSearchRowBlock ws, hideBlockStart, WorksheetRow - 1
 
                     hideBlockStart = 0
 
@@ -251,10 +196,7 @@ Public Function ApplyRecordSearch( _
             Else
 
                 If hideBlockStart = 0 Then
-
-                    hideBlockStart = _
-                        worksheetRow
-
+                    hideBlockStart = WorksheetRow
                 End If
 
             End If
@@ -264,48 +206,30 @@ Public Function ApplyRecordSearch( _
     Next rowIndex
 
     If hideBlockStart > 0 Then
-
-        HideSearchRowBlock _
-            ws, _
-            hideBlockStart, _
-            lastDataRow
-
+        HideSearchRowBlock ws, hideBlockStart, lastDataRow
     End If
 
-    Application.ScreenUpdating = _
-        previousScreenUpdating
+    Application.ScreenUpdating = previousScreenUpdating
 
-    ApplyRecordSearch = _
-        mSearchMatchCount
+    ApplyRecordSearch = mSearchMatchCount
 
     Exit Function
 
 
 SearchFailed:
 
-    errorNumber = _
-        Err.Number
-
-    errorDescription = _
-        Err.Description
+    errorNumber = Err.Number
+    errorDescription = Err.description
 
     On Error Resume Next
 
-    Application.ScreenUpdating = _
-        previousScreenUpdating
+    Application.ScreenUpdating = previousScreenUpdating
 
-    RestoreSearchHiddenRows _
-        ws
+    RestoreSearchHiddenRows ws
 
-    mSearchQuery = _
-        vbNullString
-
-    mSearchLRUFilter = _
-        vbNullString
-
-    mSearchTestFilter = _
-        vbNullString
-
+    mSearchQuery = vbNullString
+    mSearchLRUFilter = vbNullString
+    mSearchTestFilter = vbNullString
     mSearchMatchCount = 0
 
     On Error GoTo 0
@@ -333,33 +257,22 @@ Public Sub ClearRecordSearch()
     Dim errorNumber As Long
     Dim errorDescription As String
 
-    previousScreenUpdating = _
-        Application.ScreenUpdating
+    previousScreenUpdating = Application.ScreenUpdating
 
     On Error GoTo ClearFailed
 
-    Set ws = _
-        ThisWorkbook.Worksheets( _
-            SEARCH_SHEET_NAME)
+    Set ws = ThisWorkbook.Worksheets(SEARCH_SHEET_NAME)
 
     Application.ScreenUpdating = False
 
-    RestoreSearchHiddenRows _
-        ws
+    RestoreSearchHiddenRows ws
 
-    mSearchQuery = _
-        vbNullString
-
-    mSearchLRUFilter = _
-        vbNullString
-
-    mSearchTestFilter = _
-        vbNullString
-
+    mSearchQuery = vbNullString
+    mSearchLRUFilter = vbNullString
+    mSearchTestFilter = vbNullString
     mSearchMatchCount = 0
 
-    Application.ScreenUpdating = _
-        previousScreenUpdating
+    Application.ScreenUpdating = previousScreenUpdating
 
     If mSearchViewActive Then
 
@@ -367,27 +280,21 @@ Public Sub ClearRecordSearch()
 
         DoEvents
 
-        If Application.CommandBars.GetEnabledMso( _
-                CMD_EXIT_SHEET_VIEW) Then
+        If Application.CommandBars.GetEnabledMso(CMD_EXIT_SHEET_VIEW) Then
 
             ' Alt+N selects "Don't Keep" in Excel's Sheet View prompt.*
             '
             ' *I don't like this solution but this is a well documented
             ' fault with Ribbon interactions driven by VB and this was
             ' the best solution to it I could come up with.
-            Application.SendKeys _
-                "%n", _
-                False
-
-            Application.CommandBars.ExecuteMso _
-                CMD_EXIT_SHEET_VIEW
+            Application.SendKeys "%n", False
+            Application.CommandBars.ExecuteMso CMD_EXIT_SHEET_VIEW
 
             DoEvents
 
         End If
 
-        If Application.CommandBars.GetEnabledMso( _
-                CMD_EXIT_SHEET_VIEW) Then
+        If Application.CommandBars.GetEnabledMso(CMD_EXIT_SHEET_VIEW) Then
 
             mSearchViewActive = True
 
@@ -412,16 +319,12 @@ Public Sub ClearRecordSearch()
 
 ClearFailed:
 
-    errorNumber = _
-        Err.Number
-
-    errorDescription = _
-        Err.Description
+    errorNumber = Err.Number
+    errorDescription = Err.description
 
     On Error Resume Next
 
-    Application.ScreenUpdating = _
-        previousScreenUpdating
+    Application.ScreenUpdating = previousScreenUpdating
 
     On Error GoTo 0
 
@@ -441,70 +344,57 @@ Public Function RecordSearchIsActive() As Boolean
 
     RecordSearchIsActive = _
         (Len(mSearchQuery) > 0) _
-        Or _
-        (Len(mSearchLRUFilter) > 0) _
-        Or _
-        (Len(mSearchTestFilter) > 0)
+        Or (Len(mSearchLRUFilter) > 0) _
+        Or (Len(mSearchTestFilter) > 0)
 
 End Function
 
 
 Public Function RecordSearchViewIsActive() As Boolean
 
-    RecordSearchViewIsActive = _
-        mSearchViewActive
+    RecordSearchViewIsActive = mSearchViewActive
 
 End Function
 
 
 Public Function RecordSearchCurrentQuery() As String
 
-    RecordSearchCurrentQuery = _
-        mSearchQuery
+    RecordSearchCurrentQuery = mSearchQuery
 
 End Function
 
 
 Public Function RecordSearchCurrentLRUFilter() As String
 
-    RecordSearchCurrentLRUFilter = _
-        mSearchLRUFilter
+    RecordSearchCurrentLRUFilter = mSearchLRUFilter
 
 End Function
 
 
 Public Function RecordSearchCurrentTestFilter() As String
 
-    RecordSearchCurrentTestFilter = _
-        mSearchTestFilter
+    RecordSearchCurrentTestFilter = mSearchTestFilter
 
 End Function
 
 
 Public Function RecordSearchCurrentMatchCount() As Long
 
-    RecordSearchCurrentMatchCount = _
-        mSearchMatchCount
+    RecordSearchCurrentMatchCount = mSearchMatchCount
 
 End Function
 
 
-Public Sub SetRecordSearchLRUFilter( _
-    ByVal filterValue As String _
-)
+Public Sub SetRecordSearchLRUFilter(ByVal filterValue As String)
 
-    mSearchLRUFilter = _
-        Trim$(filterValue)
+    mSearchLRUFilter = Trim$(filterValue)
 
 End Sub
 
 
-Public Sub SetRecordSearchTestFilter( _
-    ByVal filterValue As String _
-)
+Public Sub SetRecordSearchTestFilter(ByVal filterValue As String)
 
-    mSearchTestFilter = _
-        Trim$(filterValue)
+    mSearchTestFilter = Trim$(filterValue)
 
 End Sub
 
@@ -533,16 +423,10 @@ Public Function ResetRecordSearchStateToDefault() As Boolean
 
     On Error GoTo ResetFailed
 
-    searchOwnedView = _
-        mSearchViewActive
+    searchOwnedView = mSearchViewActive
 
-    Set ws = _
-        ThisWorkbook.Worksheets( _
-            SEARCH_SHEET_NAME)
-
-    Set dataTable = _
-        ws.ListObjects( _
-            SEARCH_TABLE_NAME)
+    Set ws = ThisWorkbook.Worksheets(SEARCH_SHEET_NAME)
+    Set dataTable = ws.ListObjects(SEARCH_TABLE_NAME)
 
     ' Recovery uses known-safe application state rather than
     ' preserving values potentially left by interrupted VBA.
@@ -553,12 +437,8 @@ Public Function ResetRecordSearchStateToDefault() As Boolean
 
     DoEvents
 
-    firstDataRow = _
-        dataTable.HeaderRowRange.Row + 1
-
-    lastDataRow = _
-        GetLastRecordDataRow( _
-            dataTable)
+    firstDataRow = dataTable.HeaderRowRange.Row + 1
+    lastDataRow = GetLastRecordDataRow(dataTable)
 
     '----------------------------------------------------
     ' HARD ROW / FILTER RESET
@@ -570,29 +450,18 @@ Public Function ResetRecordSearchStateToDefault() As Boolean
     ' Ignore tracked blocks.
     ' Recovery must also repair stale state.
     If lastDataRow >= firstDataRow Then
-
-        ws.Rows( _
-            CStr(firstDataRow) & _
-            ":" & _
-            CStr(lastDataRow) _
-        ).Hidden = False
-
+        ws.Rows(CStr(firstDataRow) & ":" & CStr(lastDataRow)).Hidden = False
     End If
 
     '----------------------------------------------------
     ' SHEET VIEW RESET
     '----------------------------------------------------
-    sheetViewActive = _
-        Application.CommandBars.GetEnabledMso( _
-            CMD_EXIT_SHEET_VIEW)
+    sheetViewActive = Application.CommandBars.GetEnabledMso(CMD_EXIT_SHEET_VIEW)
 
     If sheetViewActive Then
 
-        activeViewName = _
-            vbNullString
-
-        activeViewNameRead = _
-            False
+        activeViewName = vbNullString
+        activeViewNameRead = False
 
         ' ActiveSheetView is not properly exposed in VBA.
         ' Read name dynamically to distinguish a Temporary View.
@@ -600,15 +469,10 @@ Public Function ResetRecordSearchStateToDefault() As Boolean
 
         Err.Clear
 
-        activeViewName = _
-            CStr( _
-                CallByName( _
-                    ActiveWindow.ActiveSheetView, _
-                    "Name", _
-                    VbGet))
+        activeViewName = CStr( _
+            CallByName(ActiveWindow.ActiveSheetView, "Name", VbGet))
 
-        activeViewNameRead = _
-            (Err.Number = 0)
+        activeViewNameRead = (Err.Number = 0)
 
         Err.Clear
 
@@ -616,24 +480,16 @@ Public Function ResetRecordSearchStateToDefault() As Boolean
 
         discardTemporaryView = _
             searchOwnedView _
-            Or _
-            ( _
-                activeViewNameRead _
-                And _
-                Len(activeViewName) = 0 _
-            )
+            Or (activeViewNameRead And Len(activeViewName) = 0)
 
         If discardTemporaryView Then
 
             ' Alt+N discards the Temporary View at the confirmation prompt.
-            Application.SendKeys _
-                "%n", _
-                False
+            Application.SendKeys "%n", False
 
         End If
 
-        Application.CommandBars.ExecuteMso _
-            CMD_EXIT_SHEET_VIEW
+        Application.CommandBars.ExecuteMso CMD_EXIT_SHEET_VIEW
 
         DoEvents
 
@@ -646,40 +502,24 @@ Public Function ResetRecordSearchStateToDefault() As Boolean
     End If
 
     If lastDataRow >= firstDataRow Then
-
-        ws.Rows( _
-            CStr(firstDataRow) & _
-            ":" & _
-            CStr(lastDataRow) _
-        ).Hidden = False
-
+        ws.Rows(CStr(firstDataRow) & ":" & CStr(lastDataRow)).Hidden = False
     End If
 
-    ws.columns( _
-        "AA:AE" _
-    ).Hidden = True
+    ws.Range(ws.Cells(1, NodeIDColumn("Test Step")), ws.Cells(1, NodeIDColumn("Sub Step 4"))).EntireColumn.Hidden = True
 
     '----------------------------------------------------
     ' INTERNAL STATE
     '----------------------------------------------------
     mSearchViewActive = False
 
-    mSearchQuery = _
-        vbNullString
-
-    mSearchLRUFilter = _
-        vbNullString
-
-    mSearchTestFilter = _
-        vbNullString
-
+    mSearchQuery = vbNullString
+    mSearchLRUFilter = vbNullString
+    mSearchTestFilter = vbNullString
     mSearchMatchCount = 0
 
-    Set mSearchHiddenBlocks = _
-        Nothing
+    Set mSearchHiddenBlocks = Nothing
 
-    ResetRecordSearchStateToDefault = _
-        True
+    ResetRecordSearchStateToDefault = True
 
 
 ResetCleanup:
@@ -713,14 +553,10 @@ ResetCleanup:
 
 ResetFailed:
 
-    errorNumber = _
-        Err.Number
+    errorNumber = Err.Number
+    errorDescription = Err.description
 
-    errorDescription = _
-        Err.Description
-
-    ResetRecordSearchStateToDefault = _
-        False
+    ResetRecordSearchStateToDefault = False
 
     Resume ResetCleanup
 
@@ -731,9 +567,7 @@ End Function
 ' INTERNAL SEARCH ENGINE
 '============================================================
 
-Private Function EnsureRecordSearchView( _
-    ByVal ws As Worksheet _
-) As Boolean
+Private Function EnsureRecordSearchView(ByVal ws As Worksheet) As Boolean
 
     Dim sheetViewCurrentlyActive As Boolean
 
@@ -743,9 +577,7 @@ Private Function EnsureRecordSearchView( _
 
     DoEvents
 
-    sheetViewCurrentlyActive = _
-        Application.CommandBars.GetEnabledMso( _
-            CMD_EXIT_SHEET_VIEW)
+    sheetViewCurrentlyActive = Application.CommandBars.GetEnabledMso(CMD_EXIT_SHEET_VIEW)
 
     '----------------------------------------------------
     ' EXISTING VIEW
@@ -754,8 +586,7 @@ Private Function EnsureRecordSearchView( _
 
         If sheetViewCurrentlyActive Then
 
-            EnsureRecordSearchView = _
-                True
+            EnsureRecordSearchView = True
 
             Exit Function
 
@@ -787,8 +618,7 @@ Private Function EnsureRecordSearchView( _
     '----------------------------------------------------
     ' TEMPORARY VIEW
     '----------------------------------------------------
-    If Not Application.CommandBars.GetEnabledMso( _
-            CMD_NEW_SHEET_VIEW) Then
+    If Not Application.CommandBars.GetEnabledMso(CMD_NEW_SHEET_VIEW) Then
 
         MsgBox _
             "Excel's New Sheet View command is not currently available." & _
@@ -801,13 +631,11 @@ Private Function EnsureRecordSearchView( _
 
     End If
 
-    Application.CommandBars.ExecuteMso _
-        CMD_NEW_SHEET_VIEW
+    Application.CommandBars.ExecuteMso CMD_NEW_SHEET_VIEW
 
     DoEvents
 
-    If Not Application.CommandBars.GetEnabledMso( _
-            CMD_EXIT_SHEET_VIEW) Then
+    If Not Application.CommandBars.GetEnabledMso(CMD_EXIT_SHEET_VIEW) Then
 
         MsgBox _
             "Excel did not enter a Temporary Sheet View." & _
@@ -820,26 +648,22 @@ Private Function EnsureRecordSearchView( _
 
     End If
 
-    mSearchViewActive = _
-        True
-
-    EnsureRecordSearchView = _
-        True
+    mSearchViewActive = True
+    EnsureRecordSearchView = True
 
     Exit Function
 
 
 ViewFailed:
 
-    mSearchViewActive = _
-        False
+    mSearchViewActive = False
 
     MsgBox _
         "Excel could not create or reuse the Temporary Sheet View." & _
         vbCrLf & vbCrLf & _
         "Error " & CStr(Err.Number) & _
         vbCrLf & _
-        Err.Description, _
+        Err.description, _
         vbCritical, _
         "Record Search"
 
@@ -872,26 +696,11 @@ Private Function RecordRowMatchesCriteria( _
     '----------------------------------------------------
     If Len(lruFilter) > 0 Then
 
-        cellValue = _
-            dataValues( _
-                rowIndex, _
-                lruColumnIndex)
+        cellValue = dataValues(rowIndex, lruColumnIndex)
 
-        If IsError(cellValue) _
-            Or IsEmpty(cellValue) Then
+        If IsError(cellValue) Or IsEmpty(cellValue) Then Exit Function
 
-            Exit Function
-
-        End If
-
-        If StrComp( _
-                Trim$(CStr(cellValue)), _
-                lruFilter, _
-                vbTextCompare) <> 0 Then
-
-            Exit Function
-
-        End If
+        If StrComp(Trim$(CStr(cellValue)), lruFilter, vbTextCompare) <> 0 Then Exit Function
 
     End If
 
@@ -900,26 +709,11 @@ Private Function RecordRowMatchesCriteria( _
     '----------------------------------------------------
     If Len(testFilter) > 0 Then
 
-        cellValue = _
-            dataValues( _
-                rowIndex, _
-                testColumnIndex)
+        cellValue = dataValues(rowIndex, testColumnIndex)
 
-        If IsError(cellValue) _
-            Or IsEmpty(cellValue) Then
+        If IsError(cellValue) Or IsEmpty(cellValue) Then Exit Function
 
-            Exit Function
-
-        End If
-
-        If StrComp( _
-                Trim$(CStr(cellValue)), _
-                testFilter, _
-                vbTextCompare) <> 0 Then
-
-            Exit Function
-
-        End If
+        If StrComp(Trim$(CStr(cellValue)), testFilter, vbTextCompare) <> 0 Then Exit Function
 
     End If
 
@@ -928,30 +722,18 @@ Private Function RecordRowMatchesCriteria( _
     '----------------------------------------------------
     If hasSearchTerms Then
 
-        rowText = _
-            vbNullString
+        rowText = vbNullString
 
-        For columnIndex = _
-            LBound(dataValues, 2) _
-            To _
-            UBound(dataValues, 2)
+        For columnIndex = LBound(dataValues, 2) To UBound(dataValues, 2)
 
-            cellValue = _
-                dataValues( _
-                    rowIndex, _
-                    columnIndex)
+            cellValue = dataValues(rowIndex, columnIndex)
 
             If Not IsError(cellValue) Then
 
                 If Not IsEmpty(cellValue) Then
 
                     If Len(CStr(cellValue)) > 0 Then
-
-                        rowText = _
-                            rowText & _
-                            " " & _
-                            CStr(cellValue)
-
+                        rowText = rowText & " " & CStr(cellValue)
                     End If
 
                 End If
@@ -962,29 +744,18 @@ Private Function RecordRowMatchesCriteria( _
 
         For Each searchTerm In searchTerms
 
-            If InStr( _
-                    1, _
-                    rowText, _
-                    CStr(searchTerm), _
-                    vbTextCompare) = 0 Then
-
-                Exit Function
-
-            End If
+            If InStr(1, rowText, CStr(searchTerm), vbTextCompare) = 0 Then Exit Function
 
         Next searchTerm
 
     End If
 
-    RecordRowMatchesCriteria = _
-        True
+    RecordRowMatchesCriteria = True
 
 End Function
 
 
-Private Function GetLastRecordDataRow( _
-    ByVal dataTable As ListObject _
-) As Long
+Private Function GetLastRecordDataRow(ByVal dataTable As ListObject) As Long
 
     Dim lastCell As Range
 
@@ -992,86 +763,53 @@ Private Function GetLastRecordDataRow( _
     ' Tables with no rows are considered to have no record data.
     If dataTable.DataBodyRange Is Nothing Then
 
-        GetLastRecordDataRow = _
-            dataTable.HeaderRowRange.Row
+        GetLastRecordDataRow = dataTable.HeaderRowRange.Row
 
         Exit Function
 
     End If
 
-    Set lastCell = _
-        dataTable.DataBodyRange.Find( _
-            What:="*", _
-            After:=dataTable.DataBodyRange.Cells(1, 1), _
-            LookIn:=xlValues, _
-            LookAt:=xlPart, _
-            SearchOrder:=xlByRows, _
-            SearchDirection:=xlPrevious, _
-            MatchCase:=False)
+    Set lastCell = dataTable.DataBodyRange.Find( _
+        What:="*", _
+        After:=dataTable.DataBodyRange.Cells(1, 1), _
+        LookIn:=xlValues, _
+        LookAt:=xlPart, _
+        SearchOrder:=xlByRows, _
+        SearchDirection:=xlPrevious, _
+        MatchCase:=False)
 
     ' Edge Case Defense:
     ' DataBodyRange can exist while containing no populated cells.
     If lastCell Is Nothing Then
 
-        GetLastRecordDataRow = _
-            dataTable.HeaderRowRange.Row
+        GetLastRecordDataRow = dataTable.HeaderRowRange.Row
 
     Else
 
-        GetLastRecordDataRow = _
-            lastCell.Row
+        GetLastRecordDataRow = lastCell.Row
 
     End If
 
 End Function
 
 
-Private Function NormalizeRecordSearchQuery( _
-    ByVal searchText As String _
-) As String
+Private Function NormalizeRecordSearchQuery(ByVal searchText As String) As String
 
     Dim normalizedText As String
 
-    normalizedText = _
-        searchText
+    normalizedText = searchText
 
-    normalizedText = _
-        Replace( _
-            normalizedText, _
-            vbTab, _
-            " ")
+    normalizedText = Replace(normalizedText, vbTab, " ")
+    normalizedText = Replace(normalizedText, vbCr, " ")
+    normalizedText = Replace(normalizedText, vbLf, " ")
 
-    normalizedText = _
-        Replace( _
-            normalizedText, _
-            vbCr, _
-            " ")
+    normalizedText = Trim$(normalizedText)
 
-    normalizedText = _
-        Replace( _
-            normalizedText, _
-            vbLf, _
-            " ")
-
-    normalizedText = _
-        Trim$(normalizedText)
-
-    Do While InStr( _
-            1, _
-            normalizedText, _
-            "  ", _
-            vbBinaryCompare) > 0
-
-        normalizedText = _
-            Replace( _
-                normalizedText, _
-                "  ", _
-                " ")
-
+    Do While InStr(1, normalizedText, "  ", vbBinaryCompare) > 0
+        normalizedText = Replace(normalizedText, "  ", " ")
     Loop
 
-    NormalizeRecordSearchQuery = _
-        normalizedText
+    NormalizeRecordSearchQuery = normalizedText
 
 End Function
 
@@ -1084,51 +822,32 @@ Private Sub HideSearchRowBlock( _
 
     Dim rowAddress As String
 
-    If lastRow < firstRow Then
-        Exit Sub
-    End If
+    If lastRow < firstRow Then Exit Sub
 
-    rowAddress = _
-        CStr(firstRow) & _
-        ":" & _
-        CStr(lastRow)
+    rowAddress = CStr(firstRow) & ":" & CStr(lastRow)
 
-    ws.Rows(rowAddress).Hidden = _
-        True
+    ws.Rows(rowAddress).Hidden = True
 
     If mSearchHiddenBlocks Is Nothing Then
-
-        Set mSearchHiddenBlocks = _
-            New Collection
-
+        Set mSearchHiddenBlocks = New Collection
     End If
 
-    mSearchHiddenBlocks.Add _
-        rowAddress
+    mSearchHiddenBlocks.Add rowAddress
 
 End Sub
 
 
-Private Sub RestoreSearchHiddenRows( _
-    ByVal ws As Worksheet _
-)
+Private Sub RestoreSearchHiddenRows(ByVal ws As Worksheet)
 
     Dim hiddenBlock As Variant
 
-    If mSearchHiddenBlocks Is Nothing Then
-        Exit Sub
-    End If
+    If mSearchHiddenBlocks Is Nothing Then Exit Sub
 
     For Each hiddenBlock In mSearchHiddenBlocks
-
-        ws.Rows( _
-            CStr(hiddenBlock) _
-        ).Hidden = False
-
+        ws.Rows(CStr(hiddenBlock)).Hidden = False
     Next hiddenBlock
 
-    Set mSearchHiddenBlocks = _
-        Nothing
+    Set mSearchHiddenBlocks = Nothing
 
 End Sub
 
@@ -1146,30 +865,22 @@ Public Sub TestRecordSearch()
     ' incorporates Excel's range-reference injection
     ' behavior which is disruptive.
     ' VBA.InputBox avoids this during free-text entry.
-    enteredValue = _
-        VBA.InputBox( _
-            Prompt:= _
-                "Enter one or more search terms." & _
-                vbCrLf & vbCrLf & _
-                "Every term must appear somewhere in the same record." & _
-                vbCrLf & vbCrLf & _
-                "Example:" & _
-                vbCrLf & _
-                "BMPG 090", _
-            Title:= _
-                "Record Search Test")
+    enteredValue = VBA.InputBox( _
+        Prompt:= _
+            "Enter one or more search terms." & _
+            vbCrLf & vbCrLf & _
+            "Every term must appear somewhere in the same record." & _
+            vbCrLf & vbCrLf & _
+            "Example:" & _
+            vbCrLf & _
+            "BMPG 090", _
+        Title:="Record Search Test")
 
-    If Len(enteredValue) = 0 Then
-        Exit Sub
-    End If
+    If Len(enteredValue) = 0 Then Exit Sub
 
-    matchCount = _
-        ApplyRecordSearch( _
-            enteredValue)
+    matchCount = ApplyRecordSearch(enteredValue)
 
-    If matchCount < 0 Then
-        Exit Sub
-    End If
+    If matchCount < 0 Then Exit Sub
 
     MsgBox _
         CStr(matchCount) & _
