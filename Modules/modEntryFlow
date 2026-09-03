@@ -1,0 +1,236 @@
+Option Explicit
+
+
+'============================================================
+' CONFIGURATION
+'============================================================
+
+Private Const ENTRY_SHEET_NAME As String = "TS Data"
+Private Const FIRST_RECORD_ROW As Long = 2
+Private Const COL_SERIAL_NUMBER As Long = 3
+
+
+'============================================================
+' MODULE STATE
+'============================================================
+
+Private mGuidedEntryActive As Boolean
+
+
+'============================================================
+' PUBLIC INTERFACE
+'============================================================
+
+Public Sub StartGuidedEntry(ByVal uutCell As Range)
+
+    Dim ws As Worksheet
+    Dim rowNumber As Long
+    Dim failureType As String
+    Dim savedErrNumber As Long
+    Dim savedErrDescription As String
+
+    If Not IsEntryCell(uutCell, fieldColumn("UUT")) Then Exit Sub
+    If mGuidedEntryActive Then Exit Sub
+
+    mGuidedEntryActive = True
+
+    On Error GoTo FlowFailed
+
+    Set ws = uutCell.Worksheet
+    rowNumber = uutCell.Row
+
+    If Not ShowGuidedPickerForCell(uutCell) Then GoTo FlowCleanup
+
+    If Not ShowSerialNumberDialog(ws.Cells(rowNumber, COL_SERIAL_NUMBER)) Then GoTo FlowCleanup
+
+    If Not ShowGuidedPickerForCell( _
+            ws.Cells(rowNumber, fieldColumn("Failure Type"))) Then GoTo FlowCleanup
+
+    failureType = EntryCellText(ws.Cells(rowNumber, fieldColumn("Failure Type")))
+
+    If StrComp(failureType, "Test", vbTextCompare) <> 0 Then GoTo FlowCleanup
+
+    If Not ShowGuidedPickerForCell( _
+            ws.Cells(rowNumber, fieldColumn("Test"))) Then GoTo FlowCleanup
+
+    ContinueHierarchyEntry ws, rowNumber
+
+
+FlowCleanup:
+
+    mGuidedEntryActive = False
+
+    Exit Sub
+
+
+FlowFailed:
+
+    savedErrNumber = Err.Number
+    savedErrDescription = Err.description
+
+    mGuidedEntryActive = False
+
+    MsgBox _
+        "Guided entry failed." & _
+        vbCrLf & vbCrLf & _
+        "Error " & CStr(savedErrNumber) & _
+        vbCrLf & _
+        savedErrDescription, _
+        vbCritical, _
+        "Guided Entry"
+
+End Sub
+
+
+Public Sub OpenSerialNumberEntry(ByVal serialNumberCell As Range)
+
+    Dim savedErrNumber As Long
+    Dim savedErrDescription As String
+
+    If Not IsEntryCell(serialNumberCell, COL_SERIAL_NUMBER) Then Exit Sub
+
+    On Error GoTo EntryFailed
+
+    ShowSerialNumberDialog serialNumberCell
+
+    Exit Sub
+
+
+EntryFailed:
+
+    savedErrNumber = Err.Number
+    savedErrDescription = Err.description
+
+    MsgBox _
+        "Serial Number entry could not be opened." & _
+        vbCrLf & vbCrLf & _
+        "Error " & CStr(savedErrNumber) & _
+        vbCrLf & _
+        savedErrDescription, _
+        vbCritical, _
+        "Serial Number"
+
+End Sub
+
+
+'============================================================
+' GUIDED HIERARCHY FLOW
+'============================================================
+
+Private Sub ContinueHierarchyEntry(ByVal ws As Worksheet, ByVal rowNumber As Long)
+
+    Dim targetCell As Range
+    Dim fieldName As String
+    Dim selectedValues As String
+    Dim selectedNodeIDs As String
+    Dim idColumn As Long
+    Dim childState As childState
+
+    fieldName = "Test Step"
+
+    Do While Len(fieldName) > 0
+
+        Set targetCell = ws.Cells(rowNumber, fieldColumn(fieldName))
+
+        If Not ShowGuidedPickerForCell(targetCell) Then Exit Sub
+
+        selectedValues = EntryCellText(targetCell)
+        selectedNodeIDs = vbNullString
+
+        idColumn = NodeIDColumn(fieldName)
+
+        If idColumn > 0 Then
+            selectedNodeIDs = EntryCellText(ws.Cells(rowNumber, idColumn))
+        End If
+
+        childState = GetHierarchySelectionChildState( _
+            fieldName, _
+            selectedValues, _
+            selectedNodeIDs)
+
+        If childState <> csRouted Then Exit Sub
+
+        fieldName = NextField(fieldName)
+
+    Loop
+
+End Sub
+
+
+'============================================================
+' SERIAL NUMBER DIALOG
+'============================================================
+
+Private Function ShowSerialNumberDialog(ByVal targetCell As Range) As Boolean
+
+    Dim entryForm As frmSerialNumber
+    Dim savedErrNumber As Long
+    Dim savedErrDescription As String
+
+    On Error GoTo DialogFailed
+
+    Set entryForm = New frmSerialNumber
+
+    entryForm.LoadSerialNumber targetCell
+
+    PositionPickerNearCell entryForm, targetCell
+
+    entryForm.Show vbModal
+
+    ShowSerialNumberDialog = entryForm.EntryConfirmed
+
+    Unload entryForm
+
+    Exit Function
+
+
+DialogFailed:
+
+    savedErrNumber = Err.Number
+    savedErrDescription = Err.description
+
+    On Error Resume Next
+
+    If Not entryForm Is Nothing Then
+        Unload entryForm
+    End If
+
+    On Error GoTo 0
+
+    Err.Raise _
+        savedErrNumber, _
+        "modEntryFlow.ShowSerialNumberDialog", _
+        savedErrDescription
+
+End Function
+
+
+'============================================================
+' INTERNAL HELPERS
+'============================================================
+
+Private Function IsEntryCell(ByVal targetCell As Range, ByVal expectedColumn As Long) As Boolean
+
+    If targetCell Is Nothing Then Exit Function
+    If Not (targetCell.Worksheet.Parent Is ThisWorkbook) Then Exit Function
+    If StrComp(targetCell.Worksheet.Name, ENTRY_SHEET_NAME, vbTextCompare) <> 0 Then Exit Function
+    If targetCell.Row < FIRST_RECORD_ROW Then Exit Function
+    If targetCell.Column <> expectedColumn Then Exit Function
+
+    IsEntryCell = True
+
+End Function
+
+
+Private Function EntryCellText(ByVal sourceCell As Range) As String
+
+    Dim cellValue As Variant
+
+    cellValue = sourceCell.value2
+
+    If IsError(cellValue) Or IsEmpty(cellValue) Then Exit Function
+
+    EntryCellText = Trim$(CStr(cellValue))
+
+End Function
+
