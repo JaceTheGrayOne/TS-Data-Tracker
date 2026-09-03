@@ -6,7 +6,6 @@ Option Explicit
 '============================================================
 
 Private Const THEME_TABLE_NAME As String = "tbl_Theme"
-
 Private Const EXACT_MATCH_SCORE_BASE As Long = 100000
 
 
@@ -16,142 +15,75 @@ Private Const EXACT_MATCH_SCORE_BASE As Long = 100000
 
 Public Function TryGetTheme( _
     ByVal fieldName As String, _
-    ByVal ItemValue As String, _
+    ByVal itemValue As String, _
     ByRef fillColor As Long, _
     ByRef textColor As Long, _
     ByRef isBold As Boolean _
 ) As Boolean
 
-    Dim tbl As ListObject
-    Dim rw As listRow
-
-    Dim colField As Long
-    Dim colMatchType As Long
-    Dim colValue As Long
-    Dim colFill As Long
-    Dim colText As Long
-    Dim colBold As Long
-
+    Dim themeTable As ListObject
+    Dim themeRow As listRow
+    Dim fieldColumn As Long
+    Dim matchTypeColumn As Long
+    Dim valueColumn As Long
+    Dim fillColumn As Long
+    Dim textColumn As Long
+    Dim boldColumn As Long
     Dim ruleField As String
     Dim matchType As String
     Dim ruleValue As String
-
     Dim fillHex As String
     Dim textHex As String
-
     Dim isMatch As Boolean
     Dim matchScore As Long
     Dim bestScore As Long
 
     ' Edge Case Defense:
-    ' Clear ByRef outputs so failed lookup cannot return stale theme data.
-    fillColor = _
-        0
+    ' ByRef outputs are reset so a failed lookup cannot return stale theme data.
+    fillColor = 0
+    textColor = 0
+    isBold = False
 
-    textColor = _
-        0
+    Set themeTable = FindThemeTable()
 
-    isBold = _
-        False
-
-    Set tbl = _
-        FindThemeTable()
-
-    If tbl Is Nothing Then
+    If themeTable Is Nothing Then
 
         Err.Raise _
             vbObjectError + 1300, _
             "modTheme.TryGetTheme", _
-            "Could not find table '" & _
-            THEME_TABLE_NAME & "'."
+            "Could not find table '" & THEME_TABLE_NAME & "'."
 
     End If
 
-    If tbl.DataBodyRange Is Nothing Then
-        Exit Function
-    End If
+    If themeTable.DataBodyRange Is Nothing Then Exit Function
 
-    colField = _
-        tbl.ListColumns( _
-            "Field" _
-        ).Index
+    fieldColumn = themeTable.ListColumns("Field").Index
+    matchTypeColumn = themeTable.ListColumns("Match Type").Index
+    valueColumn = themeTable.ListColumns("Value").Index
+    fillColumn = themeTable.ListColumns("Fill Hex").Index
+    textColumn = themeTable.ListColumns("Text Hex").Index
+    boldColumn = themeTable.ListColumns("Bold").Index
 
-    colMatchType = _
-        tbl.ListColumns( _
-            "Match Type" _
-        ).Index
+    bestScore = -1
 
-    colValue = _
-        tbl.ListColumns( _
-            "Value" _
-        ).Index
+    For Each themeRow In themeTable.ListRows
 
-    colFill = _
-        tbl.ListColumns( _
-            "Fill Hex" _
-        ).Index
+        ruleField = Trim$(CStr(themeRow.Range.Cells(1, fieldColumn).value2))
+        matchType = Trim$(CStr(themeRow.Range.Cells(1, matchTypeColumn).value2))
+        ruleValue = Trim$(CStr(themeRow.Range.Cells(1, valueColumn).value2))
 
-    colText = _
-        tbl.ListColumns( _
-            "Text Hex" _
-        ).Index
+        If StrComp(ruleField, fieldName, vbTextCompare) = 0 Then
 
-    colBold = _
-        tbl.ListColumns( _
-            "Bold" _
-        ).Index
-
-    bestScore = _
-        -1
-
-    For Each rw In tbl.ListRows
-
-        ruleField = _
-            Trim$(CStr( _
-                rw.Range.Cells( _
-                    1, _
-                    colField).value2))
-
-        matchType = _
-            Trim$(CStr( _
-                rw.Range.Cells( _
-                    1, _
-                    colMatchType).value2))
-
-        ruleValue = _
-            Trim$(CStr( _
-                rw.Range.Cells( _
-                    1, _
-                    colValue).value2))
-
-        If StrComp( _
-                ruleField, _
-                fieldName, _
-                vbTextCompare) = 0 Then
-
-            isMatch = _
-                False
-
-            matchScore = _
-                -1
+            isMatch = False
+            matchScore = -1
 
             Select Case LCase$(matchType)
 
                 Case "exact"
 
-                    If StrComp( _
-                            ItemValue, _
-                            ruleValue, _
-                            vbTextCompare) = 0 Then
-
-                        isMatch = _
-                            True
-
-                        ' Exact matches outrank prefix rules.
-                        matchScore = _
-                            EXACT_MATCH_SCORE_BASE + _
-                            Len(ruleValue)
-
+                    If StrComp(itemValue, ruleValue, vbTextCompare) = 0 Then
+                        isMatch = True
+                        matchScore = EXACT_MATCH_SCORE_BASE + Len(ruleValue)
                     End If
 
                 Case "starts with"
@@ -159,18 +91,12 @@ Public Function TryGetTheme( _
                     If Len(ruleValue) > 0 Then
 
                         If StrComp( _
-                                Left$( _
-                                    ItemValue, _
-                                    Len(ruleValue)), _
+                                Left$(itemValue, Len(ruleValue)), _
                                 ruleValue, _
                                 vbTextCompare) = 0 Then
 
-                            isMatch = _
-                                True
-
-                            ' Longer matching prefixes are more specific.
-                            matchScore = _
-                                Len(ruleValue)
+                            isMatch = True
+                            matchScore = Len(ruleValue)
 
                         End If
 
@@ -181,51 +107,28 @@ Public Function TryGetTheme( _
                     Err.Raise _
                         vbObjectError + 1302, _
                         "modTheme.TryGetTheme", _
-                        "Unknown Match Type '" & _
-                        matchType & "'."
+                        "Unknown Match Type '" & matchType & "'."
 
             End Select
 
-            If isMatch _
-                And matchScore > bestScore Then
+            If isMatch And matchScore > bestScore Then
 
-                bestScore = _
-                    matchScore
+                bestScore = matchScore
 
-                fillHex = _
-                    Trim$(CStr( _
-                        rw.Range.Cells( _
-                            1, _
-                            colFill).value2))
+                fillHex = Trim$(CStr(themeRow.Range.Cells(1, fillColumn).value2))
+                textHex = Trim$(CStr(themeRow.Range.Cells(1, textColumn).value2))
 
-                textHex = _
-                    Trim$(CStr( _
-                        rw.Range.Cells( _
-                            1, _
-                            colText).value2))
+                fillColor = HexToVBAColor(fillHex)
+                textColor = HexToVBAColor(textHex)
+                isBold = CBool(themeRow.Range.Cells(1, boldColumn).value)
 
-                fillColor = _
-                    HexToVBAColor( _
-                        fillHex)
-
-                textColor = _
-                    HexToVBAColor( _
-                        textHex)
-
-                isBold = _
-                    CBool( _
-                        rw.Range.Cells( _
-                            1, _
-                            colBold).value)
-
-                TryGetTheme = _
-                    True
+                TryGetTheme = True
 
             End If
 
         End If
 
-    Next rw
+    Next themeRow
 
 End Function
 
@@ -234,121 +137,122 @@ End Function
 ' THEME APPLICATION
 '============================================================
 
-Public Sub ApplyThemeToCell( _
-    ByVal targetCell As Range, _
-    ByVal fieldName As String _
-)
+Public Sub ApplyThemeToCell(ByVal targetCell As Range, ByVal fieldName As String)
 
+    Dim cellValue As Variant
+    Dim itemValues As String
     Dim fillColor As Long
     Dim textColor As Long
     Dim isBold As Boolean
 
-    Dim ItemValue As String
+    ResetCellTheme targetCell
 
-    ResetCellTheme _
-        targetCell
+    cellValue = targetCell.value2
 
-    ItemValue = _
-        Trim$(CStr( _
-            targetCell.value2))
+    If IsError(cellValue) Or IsEmpty(cellValue) Then Exit Sub
 
-    If Len(ItemValue) = 0 Then
-        Exit Sub
-    End If
+    itemValues = Trim$(CStr(cellValue))
 
-    If TryGetTheme( _
-            fieldName, _
-            ItemValue, _
-            fillColor, _
-            textColor, _
-            isBold) Then
+    If Len(itemValues) = 0 Then Exit Sub
 
-        targetCell.Font.Color = _
-            fillColor
+    If TryGetCombinedTheme(fieldName, itemValues, fillColor, textColor, isBold) Then
 
-        targetCell.Font.Bold = _
-            isBold
+        targetCell.Interior.Pattern = xlSolid
+        targetCell.Interior.Color = fillColor
+        targetCell.Font.Color = textColor
+        targetCell.Font.Bold = isBold
 
     End If
 
 End Sub
 
 
-Public Sub ResetCellTheme( _
-    ByVal targetCell As Range _
-)
+Public Sub ResetCellTheme(ByVal targetCell As Range)
 
-    targetCell.Interior.Pattern = _
-        xlNone
-
-    targetCell.Font.Color = _
-        UIColor_ItemText()
-
-    targetCell.Font.Bold = _
-        False
+    targetCell.Interior.Pattern = xlNone
+    targetCell.Font.Color = UIColor_ItemText()
+    targetCell.Font.Bold = False
 
 End Sub
+
+
+Private Function TryGetCombinedTheme( _
+    ByVal fieldName As String, _
+    ByVal itemValues As String, _
+    ByRef fillColor As Long, _
+    ByRef textColor As Long, _
+    ByRef isBold As Boolean _
+) As Boolean
+
+    Dim values As Collection
+    Dim item As Variant
+    Dim itemFillColor As Long
+    Dim itemTextColor As Long
+    Dim itemIsBold As Boolean
+    Dim firstTheme As Boolean
+
+    Set values = GetHierarchySelectionLines(itemValues)
+
+    If values.Count = 0 Then Exit Function
+
+    For Each item In values
+
+        If Not TryGetTheme( _
+                fieldName, _
+                CStr(item), _
+                itemFillColor, _
+                itemTextColor, _
+                itemIsBold) Then Exit Function
+
+        If Not firstTheme Then
+
+            fillColor = itemFillColor
+            textColor = itemTextColor
+            isBold = itemIsBold
+            firstTheme = True
+
+        ElseIf itemFillColor <> fillColor _
+            Or itemTextColor <> textColor _
+            Or itemIsBold <> isBold Then
+
+            Exit Function
+
+        End If
+
+    Next item
+
+    TryGetCombinedTheme = firstTheme
+
+End Function
 
 
 '============================================================
 ' COLOR UTILITIES
 '============================================================
 
-Public Function HexToVBAColor( _
-    ByVal hexColor As String _
-) As Long
+Public Function HexToVBAColor(ByVal hexColor As String) As Long
 
     Dim cleaned As String
-
     Dim redValue As Long
     Dim greenValue As Long
     Dim blueValue As Long
 
-    cleaned = _
-        Replace$( _
-            Trim$(hexColor), _
-            "#", _
-            "")
+    cleaned = Replace$(Trim$(hexColor), "#", "")
 
     If Len(cleaned) <> 6 Then
 
         Err.Raise _
             vbObjectError + 1301, _
             "modTheme.HexToVBAColor", _
-            "Invalid color '" & hexColor & _
-            "'. Expected #RRGGBB."
+            "Invalid color '" & hexColor & "'. Expected #RRGGBB."
 
     End If
 
-    redValue = _
-        CLng( _
-            "&H" & _
-            Mid$( _
-                cleaned, _
-                1, _
-                2))
+    redValue = CLng("&H" & Mid$(cleaned, 1, 2))
+    greenValue = CLng("&H" & Mid$(cleaned, 3, 2))
+    blueValue = CLng("&H" & Mid$(cleaned, 5, 2))
 
-    greenValue = _
-        CLng( _
-            "&H" & _
-            Mid$( _
-                cleaned, _
-                3, _
-                2))
-
-    blueValue = _
-        CLng( _
-            "&H" & _
-            Mid$( _
-                cleaned, _
-                5, _
-                2))
-
-    HexToVBAColor = _
-        RGB( _
-            redValue, _
-            greenValue, _
-            blueValue)
+    HexToVBAColor = RGB(redValue, greenValue, blueValue)
 
 End Function
 
@@ -360,28 +264,19 @@ End Function
 Private Function FindThemeTable() As ListObject
 
     Dim ws As Worksheet
-    Dim tbl As ListObject
+    Dim themeTable As ListObject
 
     For Each ws In ThisWorkbook.Worksheets
 
-        Set tbl = _
-            Nothing
+        Set themeTable = Nothing
 
         On Error Resume Next
-
-        Set tbl = _
-            ws.ListObjects( _
-                THEME_TABLE_NAME)
-
+        Set themeTable = ws.ListObjects(THEME_TABLE_NAME)
         On Error GoTo 0
 
-        If Not tbl Is Nothing Then
-
-            Set FindThemeTable = _
-                tbl
-
+        If Not themeTable Is Nothing Then
+            Set FindThemeTable = themeTable
             Exit Function
-
         End If
 
     Next ws
@@ -399,37 +294,24 @@ Public Sub TestThemeEngine()
     Dim textColor As Long
     Dim isBold As Boolean
 
-    Debug.Print String(70, "=")
+    Debug.Print String$(70, "=")
     Debug.Print "THEME ENGINE TEST"
-    Debug.Print String(70, "=")
+    Debug.Print String$(70, "=")
 
-    If TryGetTheme( _
-            "Sub Step 1", _
-            "Cold 1", _
-            fillColor, _
-            textColor, _
-            isBold) Then
+    If TryGetTheme("Sub Step 1", "Cold 1", fillColor, textColor, isBold) Then
 
-        Debug.Print _
-            "PASS  Theme found for Sub Step 1 = Cold 1"
-
-        Debug.Print _
-            "      Fill: " & fillColor
-
-        Debug.Print _
-            "      Text: " & textColor
-
-        Debug.Print _
-            "      Bold: " & isBold
+        Debug.Print "PASS  Theme found for Sub Step 1 = Cold 1"
+        Debug.Print "      Fill: " & fillColor
+        Debug.Print "      Text: " & textColor
+        Debug.Print "      Bold: " & isBold
 
     Else
 
-        Debug.Print _
-            "FAIL  No theme found for Sub Step 1 = Cold 1"
+        Debug.Print "FAIL  No theme found for Sub Step 1 = Cold 1"
 
     End If
 
-    Debug.Print String(70, "=")
+    Debug.Print String$(70, "=")
 
 End Sub
 
