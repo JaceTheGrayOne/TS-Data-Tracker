@@ -64,16 +64,11 @@ Public Sub PositionPickerNearCell( _
     Dim excelRight As Double
     Dim excelBottom As Double
 
-    Set win = _
-        ActiveWindow
+    Set win = ActiveWindow
 
-    If win Is Nothing Then
-        Exit Sub
-    End If
+    If win Is Nothing Then Exit Sub
 
-    dpi = _
-        GetDpiForWindow( _
-            Application.hWnd)
+    dpi = GetDpiForWindow(Application.hWnd)
 
     ' Edge Case Defense:
     ' Fall back to standard Windows DPI if window DPI is unavailable.
@@ -84,107 +79,50 @@ Public Sub PositionPickerNearCell( _
     '----------------------------------------------------
     ' SCREEN COORDINATES
     '----------------------------------------------------
-    cellLeftPixels = _
-        win.PointsToScreenPixelsX( _
-            CLng(targetCell.Left))
-
-    cellRightPixels = _
-        win.PointsToScreenPixelsX( _
-            CLng(targetCell.Left + targetCell.Width))
-
-    cellTopPixels = _
-        win.PointsToScreenPixelsY( _
-            CLng(targetCell.Top))
+    cellLeftPixels = win.PointsToScreenPixelsX(CLng(targetCell.Left))
+    cellRightPixels = win.PointsToScreenPixelsX(CLng(targetCell.Left + targetCell.Width))
+    cellTopPixels = win.PointsToScreenPixelsY(CLng(targetCell.Top))
 
     ' UserForm position is expressed in points, not screen pixels.
-    cellLeftPoints = _
-        PixelsToPoints( _
-            cellLeftPixels, _
-            dpi)
+    cellLeftPoints = PixelsToPoints(cellLeftPixels, dpi)
+    cellRightPoints = PixelsToPoints(cellRightPixels, dpi)
+    cellTopPoints = PixelsToPoints(cellTopPixels, dpi)
 
-    cellRightPoints = _
-        PixelsToPoints( _
-            cellRightPixels, _
-            dpi)
-
-    cellTopPoints = _
-        PixelsToPoints( _
-            cellTopPixels, _
-            dpi)
-
-    gapPoints = _
-        PixelsToPoints( _
-            PICKER_GAP_PIXELS, _
-            dpi)
+    gapPoints = PixelsToPoints(PICKER_GAP_PIXELS, dpi)
 
     '----------------------------------------------------
     ' INITIAL POSITION
     '----------------------------------------------------
-    pickerLeft = _
-        cellRightPoints + gapPoints
-
-    pickerTop = _
-        cellTopPoints
+    pickerLeft = cellRightPoints + gapPoints
+    pickerTop = cellTopPoints
 
     '----------------------------------------------------
     ' WINDOW CONSTRAINTS
     '----------------------------------------------------
-    excelLeft = _
-        Application.Left
+    excelLeft = Application.Left
+    excelTop = Application.Top
+    excelRight = Application.Left + Application.Width
+    excelBottom = Application.Top + Application.Height
 
-    excelTop = _
-        Application.Top
-
-    excelRight = _
-        Application.Left + Application.Width
-
-    excelBottom = _
-        Application.Top + Application.Height
-
-    If pickerLeft + picker.Width > _
-            excelRight - WINDOW_MARGIN_POINTS Then
-
-        pickerLeft = _
-            cellLeftPoints _
-            - picker.Width _
-            - gapPoints
-
+    If pickerLeft + picker.Width > excelRight - WINDOW_MARGIN_POINTS Then
+        pickerLeft = cellLeftPoints - picker.Width - gapPoints
     End If
 
-    If pickerLeft < _
-            excelLeft + WINDOW_MARGIN_POINTS Then
-
-        pickerLeft = _
-            excelLeft + WINDOW_MARGIN_POINTS
-
+    If pickerLeft < excelLeft + WINDOW_MARGIN_POINTS Then
+        pickerLeft = excelLeft + WINDOW_MARGIN_POINTS
     End If
 
-    If pickerTop + picker.Height > _
-            excelBottom - WINDOW_MARGIN_POINTS Then
-
-        pickerTop = _
-            excelBottom _
-            - picker.Height _
-            - WINDOW_MARGIN_POINTS
-
+    If pickerTop + picker.Height > excelBottom - WINDOW_MARGIN_POINTS Then
+        pickerTop = excelBottom - picker.Height - WINDOW_MARGIN_POINTS
     End If
 
-    If pickerTop < _
-            excelTop + WINDOW_MARGIN_POINTS Then
-
-        pickerTop = _
-            excelTop + WINDOW_MARGIN_POINTS
-
+    If pickerTop < excelTop + WINDOW_MARGIN_POINTS Then
+        pickerTop = excelTop + WINDOW_MARGIN_POINTS
     End If
 
-    picker.StartUpPosition = _
-        0
-
-    picker.Left = _
-        pickerLeft
-
-    picker.Top = _
-        pickerTop
+    picker.StartUpPosition = 0
+    picker.Left = pickerLeft
+    picker.Top = pickerTop
 
 End Sub
 
@@ -198,8 +136,6 @@ Private Function PixelsToPoints( _
     ByVal dpi As Long _
 ) As Double
 
-    PixelsToPoints = _
-        pixels * POINTS_PER_INCH / dpi
+    PixelsToPoints = pixels * POINTS_PER_INCH / dpi
 
 End Function
-
